@@ -20,12 +20,14 @@ import com.droidlauncher.launcher.InstallationStateStore;
 import com.droidlauncher.launcher.LaunchObservation;
 import com.droidlauncher.launcher.LaunchState;
 import com.droidlauncher.launcher.LaunchUiController;
+import com.droidlauncher.launcher.MinecraftAuthSession;
 import com.droidlauncher.launcher.MinecraftDownloadOrchestrator;
 import com.droidlauncher.launcher.MinecraftInstallationService;
 import com.droidlauncher.launcher.MinecraftLaunchArguments;
 import com.droidlauncher.launcher.MinecraftLaunchClasspath;
 import com.droidlauncher.launcher.MinecraftNativePreparer;
 import com.droidlauncher.launcher.MinecraftProfile;
+import com.droidlauncher.launcher.MinecraftXboxAuthenticator;
 import com.droidlauncher.launcher.MicrosoftAuthConfig;
 import com.droidlauncher.launcher.MicrosoftDeviceCode;
 import com.droidlauncher.launcher.MicrosoftSignInCoordinator;
@@ -33,6 +35,8 @@ import com.droidlauncher.launcher.NativeAbi;
 import com.droidlauncher.launcher.ProfileStore;
 import com.droidlauncher.launcher.ProfileValidator;
 import com.droidlauncher.launcher.SecureTokenStore;
+import com.droidlauncher.launcher.AccountStore;
+import com.droidlauncher.launcher.AuthenticatedProfile;
 import com.droidlauncher.runtime.JavaRuntime;
 import com.droidlauncher.runtime.JavaRuntimeDetector;
 
@@ -55,6 +59,8 @@ public final class MainActivity extends Activity {
     private InstallationStateStore installationStateStore;
     private MicrosoftSignInCoordinator signInCoordinator;
     private SecureTokenStore tokenStore;
+    private AccountStore accountStore;
+    private MinecraftAuthSession minecraftSession;
     private final AtomicBoolean installing = new AtomicBoolean(false);
 
     @Override
@@ -72,6 +78,7 @@ public final class MainActivity extends Activity {
         installationStateStore = new InstallationStateStore(this);
         signInCoordinator = new MicrosoftSignInCoordinator();
         tokenStore = new SecureTokenStore(this);
+        accountStore = new AccountStore(this);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -192,17 +199,19 @@ public final class MainActivity extends Activity {
                 runOnUiThread(() -> showDeviceCode(code));
             }
             @Override public void onSuccess(com.droidlauncher.launcher.MicrosoftOAuthClient.MicrosoftTokenResponse token) {
-                try {
-                    if (!token.getRefreshToken().isEmpty()) tokenStore.saveRefreshToken(token.getRefreshToken());
-                    runOnUiThread(() -> {
-                        refreshAccountStatus();
-                        launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.IDLE,
-                                "Microsoft account authorized"));
-                    });
-                } catch (Exception e) {
-                    runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                            "Could not save account securely: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                if (!token.getRefreshToken().isEmpty()) {
+                    try {
+                        tokenStore.saveRefreshToken(token.getRefreshToken());
+                    } catch (Exception e) {
+                        runOnUiThread(() -> Toast.makeText(MainActivity.this,
+                                "Could not save account securely: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                        return;
+                    }
                 }
+                launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.PREPARING,
+                        "Microsoft authorized. Verifying Minecraft account..."));
+                new Thread(() -> completeMinecraftAuthentication(token.getAccessToken()),
+                        "droid-minecraft-auth").start();
             }
             @Override public void onError(String message) {
                 runOnUiThread(() -> {
@@ -211,6 +220,32 @@ public final class MainActivity extends Activity {
                 });
             }
         });
+    }
+
+    private void completeMinecraftAuthentication(String microsoftAccessToken) {
+        try {
+            MinecraftAuthSession session = new MinecraftXboxAuthenticator().authenticate(microsoftAccessToken);
+            minecraftSession = session;
+            AuthenticatedProfile authenticated = session.getProfile();
+            accountStore.save(authenticated);
+            runOnUiThread(() -> {
+                refreshAccountStatus();
+                launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.IDLE,
+                        "Minecraft account ready: " + authenticated.getDisplayName()));
+                Toast.makeText(MainActivity.this,
+                        "Minecraft account verified: " + authenticated.getDisplayName(), Toast.LENGTH_LONG).show();
+            });
+        } catch (Exception e) {
+            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            minecraftSession = null;
+            runOnUiThread(() -> {
+                refreshAccountStatus();
+                launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED,
+                        "Minecraft authentication failed: " + message));
+                Toast.makeText(MainActivity.this,
+                        "Minecraft authentication failed: " + message, Toast.LENGTH_LONG).show();
+            });
+        }
     }
 
     private void showDeviceCode(MicrosoftDeviceCode code) {
@@ -235,16 +270,24 @@ public final class MainActivity extends Activity {
 
     private void signOutMicrosoft() {
         tokenStore.clear();
+        minecraftSession = null;
+        accountStore.clearAll();
         refreshAccountStatus();
         Toast.makeText(this, "Microsoft account signed out", Toast.LENGTH_SHORT).show();
     }
 
     private void refreshAccountStatus() {
+        if (minecraftSession != null) {
+            AuthenticatedProfile authenticated = minecraftSession.getProfile();
+            accountStatus.setText("Minecraft account: " + authenticated.getDisplayName()
+                    + " • verified • session active");
+            return;
+        }
         try {
             String token = tokenStore.loadRefreshToken();
             accountStatus.setText(token.isEmpty()
-                    ? "Microsoft account: not connected"
-                    : "Microsoft account: connected (secure token saved)");
+                    ? "Minecraft account: not connected"
+                    : "Microsoft account: authorized • Minecraft session required");
         } catch (Exception e) {
             accountStatus.setText("Microsoft account: token recovery error");
         }
@@ -252,6 +295,13 @@ public final class MainActivity extends Activity {
 
     private void startMinecraft() {
         if (!installing.compareAndSet(false, true)) return;
+        if (minecraftSession == null || minecraftSession.getProfile().isExpired(System.currentTimeMillis())) {
+            installing.set(false);
+            launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED,
+                    "Sign in with Microsoft and verify Minecraft before pressing PLAY"));
+            Toast.makeText(this, "Please sign in and verify your Minecraft account first", Toast.LENGTH_LONG).show();
+            return;
+        }
         ProfileValidator.ValidationResult result = ProfileValidator.validate(profile);
         if (!result.isValid()) {
             installing.set(false);
@@ -304,6 +354,12 @@ public final class MainActivity extends Activity {
 
     private void launchInstalledVersion(File gameDirectory, MinecraftInstallationService.InstallationPlan plan,
                                         String classpath, File nativesDirectory) {
+        MinecraftAuthSession session = minecraftSession;
+        if (session == null || session.getProfile().isExpired(System.currentTimeMillis())) {
+            launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED,
+                    "Minecraft authentication session is missing or expired"));
+            return;
+        }
         List<JavaRuntime> runtimes = new JavaRuntimeDetector().detect();
         JavaRuntime runtime = null;
         if (!profile.getJavaExecutable().trim().isEmpty()) {
@@ -319,8 +375,10 @@ public final class MainActivity extends Activity {
         }
         String mainClass = plan.getMetadata().getMainClass().isEmpty()
                 ? "net.minecraft.client.main.Main" : plan.getMetadata().getMainClass();
+        AuthenticatedProfile authenticated = session.getProfile();
         List<String> gameArguments = new MinecraftLaunchArguments().build(
-                plan.getMetadata().getId(), mainClass, profile.getId(), "", "0", gameDirectory,
+                plan.getMetadata().getId(), mainClass, authenticated.getDisplayName(),
+                authenticated.getUuid(), session.getMinecraftAccessToken(), gameDirectory,
                 new File(gameDirectory, "assets"), plan.getMetadata().getAssetsIndexId());
         ArrayList<String> jvmArguments = new ArrayList<>();
         jvmArguments.add("-Djava.library.path=" + nativesDirectory.getAbsolutePath());
