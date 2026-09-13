@@ -23,4 +23,6 @@ public final class MicrosoftAuthConfig {
 
     public String getClientId() { return clientId; }
     public String getScope() { return scope; }
+    public String getDeviceCodeEndpoint() { return DEVICE_CODE_ENDPOINT; }
+    public String getTokenEndpoint() { return TOKEN_ENDPOINT; }
 }
