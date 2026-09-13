@@ -16,7 +16,10 @@ import com.droidlauncher.launcher.LaunchState;
 import com.droidlauncher.launcher.LaunchUiController;
 import com.droidlauncher.launcher.MinecraftDownloadOrchestrator;
 import com.droidlauncher.launcher.MinecraftInstallationService;
+import com.droidlauncher.launcher.MinecraftLaunchClasspath;
+import com.droidlauncher.launcher.MinecraftNativePreparer;
 import com.droidlauncher.launcher.MinecraftProfile;
+import com.droidlauncher.launcher.NativeAbi;
 import com.droidlauncher.launcher.ProfileStore;
 import com.droidlauncher.launcher.ProfileValidator;
 import com.droidlauncher.runtime.JavaRuntime;
@@ -68,7 +71,7 @@ public final class MainActivity extends Activity {
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Minecraft Java • Install Before Launch");
+        subtitle.setText("Minecraft Java • Real Classpath + Natives");
         subtitle.setTextColor(Color.LTGRAY);
         subtitle.setTextSize(15);
         subtitle.setGravity(Gravity.CENTER);
@@ -152,7 +155,7 @@ public final class MainActivity extends Activity {
 
         playButton.setEnabled(false);
         launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.PREPARING,
-                "Preparing Minecraft installation..."));
+                "Installing and preparing Minecraft..."));
 
         new Thread(() -> {
             try {
@@ -172,15 +175,21 @@ public final class MainActivity extends Activity {
                             + progress.getTotalTasks(), false);
                 });
 
+                MinecraftLaunchClasspath.Result resolved = new MinecraftLaunchClasspath()
+                        .resolve(plan.getVersionJson(), gameDirectory);
+                File nativesDirectory = new File(gameDirectory, "natives");
+                File preparedNatives = new MinecraftNativePreparer().prepare(
+                        resolved.getNativeLibraries(), NativeAbi.detect(), nativesDirectory);
+
                 installationStateStore.save(new InstallationState(plan.getMetadata().getId(),
                         InstallationState.Status.COMPLETED, total, total, "", "", System.currentTimeMillis()));
-                postInstallationStatus("Minecraft installed and verified.", false);
-                runOnUiThread(() -> launchInstalledVersion(gameDirectory, plan));
+                postInstallationStatus("Minecraft installed and launch files verified.", false);
+                runOnUiThread(() -> launchInstalledVersion(gameDirectory, plan, resolved.getClasspath(), preparedNatives));
             } catch (Exception e) {
                 String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 installationStateStore.save(new InstallationState(profile.getVersion(),
                         InstallationState.Status.FAILED, 0, 0, "", message, System.currentTimeMillis()));
-                postInstallationStatus("Installation failed: " + message, true);
+                postInstallationStatus("Preparation failed: " + message, true);
             } finally {
                 installing.set(false);
                 runOnUiThread(() -> playButton.setEnabled(true));
@@ -197,8 +206,9 @@ public final class MainActivity extends Activity {
     }
 
     private void launchInstalledVersion(File gameDirectory,
-                                        MinecraftInstallationService.InstallationPlan plan) {
-        File nativesDirectory = new File(gameDirectory, "natives");
+                                        MinecraftInstallationService.InstallationPlan plan,
+                                        String classpath,
+                                        File nativesDirectory) {
         List<JavaRuntime> runtimes = new JavaRuntimeDetector().detect();
         JavaRuntime runtime = null;
         if (!profile.getJavaExecutable().trim().isEmpty()) {
@@ -211,9 +221,10 @@ public final class MainActivity extends Activity {
         } else if (!runtimes.isEmpty()) {
             runtime = runtimes.get(0);
         }
-        String versionId = plan.getMetadata().getId();
-        String classpath = new File(new File(new File(gameDirectory, "versions"), versionId),
-                versionId + ".jar").getAbsolutePath();
+        if (runtime == null) {
+            launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED, "No usable Java runtime found"));
+            return;
+        }
         String mainClass = plan.getMetadata().getMainClass().isEmpty()
                 ? "net.minecraft.client.main.Main" : plan.getMetadata().getMainClass();
         launchController.launch(runtime, gameDirectory, nativesDirectory, classpath,
