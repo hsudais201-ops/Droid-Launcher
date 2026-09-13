@@ -26,6 +26,7 @@ public final class NativeLibraryExtractor {
         }
 
         File canonicalRoot = nativeDirectory.getCanonicalFile();
+        String rootPrefix = canonicalRoot.getPath() + File.separator;
         Set<File> extracted = new HashSet<>();
         try (JarFile jar = new JarFile(jarFile)) {
             Enumeration<JarEntry> entries = jar.entries();
@@ -36,9 +37,10 @@ public final class NativeLibraryExtractor {
                 if (!name.endsWith(".so") && !name.contains(".so.")) continue;
 
                 String fileName = new File(name).getName();
-                if (fileName.isEmpty() || !fileName.endsWith(".so") && !fileName.contains(".so.")) continue;
+                if (fileName.isEmpty() || (!fileName.endsWith(".so") && !fileName.contains(".so."))) continue;
                 File output = new File(canonicalRoot, fileName).getCanonicalFile();
-                if (!output.toPath().startsWith(canonicalRoot.toPath())) {
+                String outputPath = output.getPath();
+                if (!outputPath.equals(canonicalRoot.getPath()) && !outputPath.startsWith(rootPrefix)) {
                     throw new IOException("Unsafe native entry: " + name);
                 }
 
