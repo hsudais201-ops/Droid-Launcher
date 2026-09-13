@@ -8,16 +8,25 @@ import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
-import android.widget.Toast;
 
+import com.droidlauncher.launcher.LaunchUiController;
 import com.droidlauncher.launcher.MinecraftProfile;
 import com.droidlauncher.launcher.ProfileStore;
 import com.droidlauncher.launcher.ProfileValidator;
+import com.droidlauncher.runtime.JavaRuntime;
+import com.droidlauncher.runtime.JavaRuntimeDetector;
+
+import java.io.File;
+import java.util.Collections;
 
 public final class MainActivity extends Activity {
     private ProfileStore profileStore;
     private MinecraftProfile profile;
     private TextView profileStatus;
+    private TextView launchStatus;
+    private TextView launchDetail;
+    private Button playButton;
+    private LaunchUiController launchController;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -47,7 +56,7 @@ public final class MainActivity extends Activity {
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Minecraft Java • Step 162 Profile Engine");
+        subtitle.setText("Minecraft Java • Real Launch Pipeline");
         subtitle.setTextColor(Color.LTGRAY);
         subtitle.setTextSize(15);
         subtitle.setGravity(Gravity.CENTER);
@@ -64,24 +73,72 @@ public final class MainActivity extends Activity {
         root.addView(profileStatus, statusParams);
         refreshProfileStatus();
 
-        Button play = new Button(this);
-        play.setText("PLAY");
-        play.setTextSize(18);
-        play.setOnClickListener(v -> {
-            ProfileValidator.ValidationResult result = ProfileValidator.validate(profile);
-            if (!result.isValid()) {
-                Toast.makeText(this, "Cannot launch: " + result.getMessage(), Toast.LENGTH_LONG).show();
-                return;
-            }
-            Toast.makeText(this,
-                    "Profile ready. Next engine stages: Java → libraries → natives → GLFW/LWJGL → Minecraft",
-                    Toast.LENGTH_LONG).show();
-        });
-        LinearLayout.LayoutParams buttonParams = new LinearLayout.LayoutParams(320, 76);
-        buttonParams.topMargin = 30;
-        root.addView(play, buttonParams);
+        launchStatus = new TextView(this);
+        launchStatus.setTextColor(Color.WHITE);
+        launchStatus.setTextSize(15);
+        launchStatus.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams launchStatusParams = new LinearLayout.LayoutParams(-1, -2);
+        launchStatusParams.topMargin = 18;
+        root.addView(launchStatus, launchStatusParams);
+
+        launchDetail = new TextView(this);
+        launchDetail.setTextColor(Color.LTGRAY);
+        launchDetail.setTextSize(12);
+        launchDetail.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(-1, -2);
+        detailParams.topMargin = 8;
+        root.addView(launchDetail, detailParams);
+
+        launchController = new LaunchUiController(launchStatus, launchDetail);
+        launchController.onLaunchUpdate(com.droidlauncher.launcher.LaunchObservation.state(
+                com.droidlauncher.launcher.LaunchState.IDLE, "Launcher ready"));
+
+        LinearLayout actions = new LinearLayout(this);
+        actions.setGravity(Gravity.CENTER);
+
+        playButton = new Button(this);
+        playButton.setText("PLAY");
+        playButton.setTextSize(18);
+        playButton.setOnClickListener(v -> startMinecraft());
+        LinearLayout.LayoutParams playParams = new LinearLayout.LayoutParams(320, 76);
+        playParams.topMargin = 22;
+        actions.addView(playButton, playParams);
+
+        Button stopButton = new Button(this);
+        stopButton.setText("STOP");
+        stopButton.setOnClickListener(v -> launchController.stop());
+        LinearLayout.LayoutParams stopParams = new LinearLayout.LayoutParams(220, 76);
+        stopParams.leftMargin = 16;
+        actions.addView(stopButton, stopParams);
+        root.addView(actions);
 
         setContentView(root);
+    }
+
+    private void startMinecraft() {
+        ProfileValidator.ValidationResult result = ProfileValidator.validate(profile);
+        if (!result.isValid()) {
+            launchController.onLaunchUpdate(com.droidlauncher.launcher.LaunchObservation.state(
+                    com.droidlauncher.launcher.LaunchState.FAILED,
+                    result.getMessage()));
+            return;
+        }
+
+        playButton.setEnabled(false);
+        File gameDirectory = new File(profile.getGameDirectory());
+        File nativesDirectory = new File(gameDirectory, "natives");
+        JavaRuntime runtime = new JavaRuntimeDetector().detect(
+                profile.getJavaExecutable(),
+                8,
+                Integer.MAX_VALUE);
+
+        String classpath = new File(gameDirectory, "versions/" + profile.getVersion()
+                + "/" + profile.getVersion() + ".jar").getAbsolutePath();
+
+        launchController.launch(runtime, gameDirectory, nativesDirectory, classpath,
+                "net.minecraft.client.main.Main", Collections.emptyList(), Collections.emptyList(),
+                Collections.emptyMap());
+        playButton.postDelayed(() -> playButton.setEnabled(true), 1000L);
     }
 
     private void refreshProfileStatus() {
@@ -90,5 +147,11 @@ public final class MainActivity extends Activity {
         profileStatus.setText("Profile: " + profile.getId()
                 + "\nVersion: " + profile.getVersion()
                 + "\nStatus: " + state);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (launchController != null) launchController.shutdown();
+        super.onDestroy();
     }
 }
