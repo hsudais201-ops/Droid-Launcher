@@ -14,6 +14,8 @@ import com.droidlauncher.launcher.InstallationStateStore;
 import com.droidlauncher.launcher.LaunchObservation;
 import com.droidlauncher.launcher.LaunchState;
 import com.droidlauncher.launcher.LaunchUiController;
+import com.droidlauncher.launcher.MinecraftDownloadOrchestrator;
+import com.droidlauncher.launcher.MinecraftInstallationService;
 import com.droidlauncher.launcher.MinecraftProfile;
 import com.droidlauncher.launcher.ProfileStore;
 import com.droidlauncher.launcher.ProfileValidator;
@@ -23,6 +25,7 @@ import com.droidlauncher.runtime.JavaRuntimeDetector;
 import java.io.File;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class MainActivity extends Activity {
     private ProfileStore profileStore;
@@ -34,6 +37,7 @@ public final class MainActivity extends Activity {
     private Button playButton;
     private LaunchUiController launchController;
     private InstallationStateStore installationStateStore;
+    private final AtomicBoolean installing = new AtomicBoolean(false);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -64,7 +68,7 @@ public final class MainActivity extends Activity {
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Minecraft Java • Real Launch Pipeline");
+        subtitle.setText("Minecraft Java • Install Before Launch");
         subtitle.setTextColor(Color.LTGRAY);
         subtitle.setTextSize(15);
         subtitle.setGravity(Gravity.CENTER);
@@ -138,14 +142,62 @@ public final class MainActivity extends Activity {
     }
 
     private void startMinecraft() {
+        if (!installing.compareAndSet(false, true)) return;
         ProfileValidator.ValidationResult result = ProfileValidator.validate(profile);
         if (!result.isValid()) {
+            installing.set(false);
             launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED, result.getMessage()));
             return;
         }
 
         playButton.setEnabled(false);
-        File gameDirectory = new File(profile.getGameDirectory());
+        launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.PREPARING,
+                "Preparing Minecraft installation..."));
+
+        new Thread(() -> {
+            try {
+                File gameDirectory = new File(profile.getGameDirectory());
+                MinecraftInstallationService service = new MinecraftInstallationService();
+                MinecraftInstallationService.InstallationPlan plan = service.prepare(profile.getVersion(), gameDirectory);
+                int total = plan.getTasks().size();
+                installationStateStore.save(new InstallationState(plan.getMetadata().getId(),
+                        InstallationState.Status.RUNNING, 0, total, "preparing", "", System.currentTimeMillis()));
+                postInstallationStatus("Installing Minecraft " + plan.getMetadata().getId() + "...", false);
+
+                service.install(plan, new MinecraftDownloadOrchestrator(), progress -> {
+                    installationStateStore.save(new InstallationState(plan.getMetadata().getId(),
+                            InstallationState.Status.RUNNING, progress.getCompletedTasks(),
+                            progress.getTotalTasks(), progress.getTaskName(), "", System.currentTimeMillis()));
+                    postInstallationStatus("Installing " + progress.getCompletedTasks() + "/"
+                            + progress.getTotalTasks(), false);
+                });
+
+                installationStateStore.save(new InstallationState(plan.getMetadata().getId(),
+                        InstallationState.Status.COMPLETED, total, total, "", "", System.currentTimeMillis()));
+                postInstallationStatus("Minecraft installed and verified.", false);
+                runOnUiThread(() -> launchInstalledVersion(gameDirectory, plan));
+            } catch (Exception e) {
+                String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                installationStateStore.save(new InstallationState(profile.getVersion(),
+                        InstallationState.Status.FAILED, 0, 0, "", message, System.currentTimeMillis()));
+                postInstallationStatus("Installation failed: " + message, true);
+            } finally {
+                installing.set(false);
+                runOnUiThread(() -> playButton.setEnabled(true));
+            }
+        }, "droid-install-and-launch").start();
+    }
+
+    private void postInstallationStatus(String message, boolean failed) {
+        runOnUiThread(() -> {
+            installationStatus.setText(message);
+            launchController.onLaunchUpdate(LaunchObservation.state(
+                    failed ? LaunchState.FAILED : LaunchState.PREPARING, message));
+        });
+    }
+
+    private void launchInstalledVersion(File gameDirectory,
+                                        MinecraftInstallationService.InstallationPlan plan) {
         File nativesDirectory = new File(gameDirectory, "natives");
         List<JavaRuntime> runtimes = new JavaRuntimeDetector().detect();
         JavaRuntime runtime = null;
@@ -159,14 +211,13 @@ public final class MainActivity extends Activity {
         } else if (!runtimes.isEmpty()) {
             runtime = runtimes.get(0);
         }
-
-        String classpath = new File(gameDirectory, "versions/" + profile.getVersion()
-                + "/" + profile.getVersion() + ".jar").getAbsolutePath();
-
+        String versionId = plan.getMetadata().getId();
+        String classpath = new File(new File(new File(gameDirectory, "versions"), versionId),
+                versionId + ".jar").getAbsolutePath();
+        String mainClass = plan.getMetadata().getMainClass().isEmpty()
+                ? "net.minecraft.client.main.Main" : plan.getMetadata().getMainClass();
         launchController.launch(runtime, gameDirectory, nativesDirectory, classpath,
-                "net.minecraft.client.main.Main", Collections.emptyList(), Collections.emptyList(),
-                Collections.emptyMap());
-        playButton.postDelayed(() -> playButton.setEnabled(true), 1000L);
+                mainClass, Collections.emptyList(), Collections.emptyList(), Collections.emptyMap());
     }
 
     private void refreshInstallationStatus() {
@@ -176,8 +227,7 @@ public final class MainActivity extends Activity {
             return;
         }
         String progress = state.getTotalTasks() > 0
-                ? " (" + state.getCompletedTasks() + "/" + state.getTotalTasks() + ")"
-                : "";
+                ? " (" + state.getCompletedTasks() + "/" + state.getTotalTasks() + ")" : "";
         String detail = state.getCurrentTask().isEmpty() ? "" : "\n" + state.getCurrentTask();
         String error = state.getError().isEmpty() ? "" : "\n" + state.getError();
         installationStatus.setText("Installation " + state.getVersionId() + ": "
