@@ -16,6 +16,7 @@ import com.droidlauncher.launcher.LaunchState;
 import com.droidlauncher.launcher.LaunchUiController;
 import com.droidlauncher.launcher.MinecraftDownloadOrchestrator;
 import com.droidlauncher.launcher.MinecraftInstallationService;
+import com.droidlauncher.launcher.MinecraftLaunchArguments;
 import com.droidlauncher.launcher.MinecraftLaunchClasspath;
 import com.droidlauncher.launcher.MinecraftNativePreparer;
 import com.droidlauncher.launcher.MinecraftProfile;
@@ -26,6 +27,7 @@ import com.droidlauncher.runtime.JavaRuntime;
 import com.droidlauncher.runtime.JavaRuntimeDetector;
 
 import java.io.File;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -71,7 +73,7 @@ public final class MainActivity extends Activity {
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Minecraft Java • Real Classpath + Natives");
+        subtitle.setText("Minecraft Java • Real Launch Arguments");
         subtitle.setTextColor(Color.LTGRAY);
         subtitle.setTextSize(15);
         subtitle.setGravity(Gravity.CENTER);
@@ -227,8 +229,17 @@ public final class MainActivity extends Activity {
         }
         String mainClass = plan.getMetadata().getMainClass().isEmpty()
                 ? "net.minecraft.client.main.Main" : plan.getMetadata().getMainClass();
+
+        List<String> gameArguments = new MinecraftLaunchArguments().build(
+                plan.getMetadata().getId(), mainClass, profile.getId(), "", "0",
+                gameDirectory, new File(gameDirectory, "assets"), plan.getMetadata().getAssetsIndexId());
+        ArrayList<String> jvmArguments = new ArrayList<>();
+        jvmArguments.add("-Djava.library.path=" + nativesDirectory.getAbsolutePath());
+        jvmArguments.add("-Xms" + profile.getMinRamMb() + "M");
+        jvmArguments.add("-Xmx" + profile.getMaxRamMb() + "M");
+
         launchController.launch(runtime, gameDirectory, nativesDirectory, classpath,
-                mainClass, Collections.emptyList(), Collections.emptyList(), Collections.emptyMap());
+                mainClass, jvmArguments, gameArguments, Collections.emptyMap());
     }
 
     private void refreshInstallationStatus() {
