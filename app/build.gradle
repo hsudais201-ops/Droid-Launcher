@@ -10,6 +10,7 @@ android {
         targetSdk 37
         versionCode 1
         versionName '0.1.0'
+        resValue 'string', 'microsoft_client_id', project.findProperty('MICROSOFT_CLIENT_ID') ?: ''
     }
 
     buildTypes {
