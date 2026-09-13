@@ -13,6 +13,10 @@ android {
         resValue 'string', 'microsoft_client_id', project.findProperty('MICROSOFT_CLIENT_ID') ?: ''
     }
 
+    buildFeatures {
+        resValues true
+    }
+
     buildTypes {
         release {
             minifyEnabled false
