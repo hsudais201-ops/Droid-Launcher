@@ -4,6 +4,7 @@ package com.droidlauncher.launcher;
 public enum LaunchState {
     IDLE,
     PREFLIGHT,
+    PREPARING,
     COMMAND_READY,
     STARTING,
     RUNNING,
