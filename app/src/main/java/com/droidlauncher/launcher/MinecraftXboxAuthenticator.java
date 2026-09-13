@@ -1,6 +1,7 @@
 package com.droidlauncher.launcher;
 
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
@@ -33,47 +34,51 @@ public final class MinecraftXboxAuthenticator {
             throw new IllegalArgumentException("Microsoft access token is required");
         }
 
-        JSONObject xbox = postJson(XBOX_USER_AUTH, new JSONObject()
-                .put("RelyingParty", "http://auth.xboxlive.com")
-                .put("TokenType", "JWT")
-                .put("Properties", new JSONObject()
-                        .put("AuthMethod", "RPS")
-                        .put("SiteName", "user.auth.xboxlive.com")
-                        .put("RpsTicket", "d=" + microsoftAccessToken)), null);
+        try {
+            JSONObject xbox = postJson(XBOX_USER_AUTH, new JSONObject()
+                    .put("RelyingParty", "http://auth.xboxlive.com")
+                    .put("TokenType", "JWT")
+                    .put("Properties", new JSONObject()
+                            .put("AuthMethod", "RPS")
+                            .put("SiteName", "user.auth.xboxlive.com")
+                            .put("RpsTicket", "d=" + microsoftAccessToken)), null);
 
-        String xboxToken = requireString(xbox, "Token", "Xbox Live token");
-        String userHash = extractUserHash(xbox);
+            String xboxToken = requireString(xbox, "Token", "Xbox Live token");
+            String userHash = extractUserHash(xbox);
 
-        JSONObject xsts = postJson(XSTS_AUTH, new JSONObject()
-                .put("RelyingParty", "rp://api.minecraftservices.com/")
-                .put("TokenType", "JWT")
-                .put("Properties", new JSONObject()
-                        .put("SandboxId", "RETAIL")
-                        .put("UserTokens", new JSONArray().put(xboxToken))), null);
+            JSONObject xsts = postJson(XSTS_AUTH, new JSONObject()
+                    .put("RelyingParty", "rp://api.minecraftservices.com/")
+                    .put("TokenType", "JWT")
+                    .put("Properties", new JSONObject()
+                            .put("SandboxId", "RETAIL")
+                            .put("UserTokens", new JSONArray().put(xboxToken))), null);
 
-        String xstsToken = requireString(xsts, "Token", "XSTS token");
+            String xstsToken = requireString(xsts, "Token", "XSTS token");
 
-        String identityToken = "XBL3.0 x=" + userHash + ";" + xstsToken;
-        JSONObject minecraft = postJson(MINECRAFT_LOGIN, new JSONObject()
-                .put("identityToken", identityToken)
-                .put("ensureLegacyEnabled", true), null);
-        String minecraftAccessToken = requireString(minecraft, "access_token", "Minecraft access token");
-        long expiresIn = minecraft.optLong("expires_in", 86400L);
+            String identityToken = "XBL3.0 x=" + userHash + ";" + xstsToken;
+            JSONObject minecraft = postJson(MINECRAFT_LOGIN, new JSONObject()
+                    .put("identityToken", identityToken)
+                    .put("ensureLegacyEnabled", true), null);
+            String minecraftAccessToken = requireString(minecraft, "access_token", "Minecraft access token");
+            long expiresIn = minecraft.optLong("expires_in", 86400L);
 
-        JSONObject entitlements = getJson(MINECRAFT_ENTITLEMENTS, bearer(minecraftAccessToken));
-        JSONArray items = entitlements.optJSONArray("items");
-        if (items == null || items.length() == 0) {
-            throw new IOException("This Microsoft account does not own Minecraft Java Edition");
+            JSONObject entitlements = getJson(MINECRAFT_ENTITLEMENTS, bearer(minecraftAccessToken));
+            JSONArray items = entitlements.optJSONArray("items");
+            if (items == null || items.length() == 0) {
+                throw new IOException("This Microsoft account does not own Minecraft Java Edition");
+            }
+
+            JSONObject profile = getJson(MINECRAFT_PROFILE, bearer(minecraftAccessToken));
+            String uuid = requireString(profile, "id", "Minecraft profile UUID");
+            String name = requireString(profile, "name", "Minecraft profile name");
+
+            long expiresAt = System.currentTimeMillis() + Math.max(60L, expiresIn) * 1000L;
+            AuthenticatedProfile authenticatedProfile = new AuthenticatedProfile(
+                    uuid, name, minecraftAccessToken, uuid, expiresAt);
+            return new MinecraftAuthSession(authenticatedProfile, minecraftAccessToken);
+        } catch (JSONException e) {
+            throw new IOException("Could not construct authentication request JSON", e);
         }
-
-        JSONObject profile = getJson(MINECRAFT_PROFILE, bearer(minecraftAccessToken));
-        String uuid = requireString(profile, "id", "Minecraft profile UUID");
-        String name = requireString(profile, "name", "Minecraft profile name");
-
-        long expiresAt = System.currentTimeMillis() + Math.max(60L, expiresIn) * 1000L;
-        AuthenticatedProfile authenticatedProfile = new AuthenticatedProfile(
-                uuid, name, minecraftAccessToken, uuid, expiresAt);
-        return new MinecraftAuthSession(authenticatedProfile, minecraftAccessToken);
     }
 
     private Map<String, String> bearer(String accessToken) {
