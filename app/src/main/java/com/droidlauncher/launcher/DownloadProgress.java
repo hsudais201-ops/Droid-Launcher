@@ -23,6 +23,11 @@ public final class DownloadProgress {
     public int getItemIndex() { return itemIndex; }
     public int getItemCount() { return itemCount; }
 
+    /** Compatibility aliases used by the installation controller/UI. */
+    public int getCompletedTasks() { return itemIndex; }
+    public int getTotalTasks() { return itemCount; }
+    public String getTaskName() { return name; }
+
     public int getPercent() {
         if (totalBytes <= 0L) return 0;
         return (int) Math.min(100L, (completedBytes * 100L) / totalBytes);
