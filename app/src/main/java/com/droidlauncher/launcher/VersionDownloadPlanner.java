@@ -16,22 +16,23 @@ public final class VersionDownloadPlanner {
 
         if (metadata.getClientUrl() != null) {
             tasks.add(task("client-" + metadata.getId(), metadata.getClientUrl(),
-                    metadata.getClientSha1(), new File(versionDir, metadata.getId() + ".jar")));
+                    new File(versionDir, metadata.getId() + ".jar"), metadata.getClientSha1()));
         }
 
         if (metadata.getAssetsIndexUrl() != null && !metadata.getAssetsIndexId().isEmpty()) {
             File indexes = new File(VersionInstallation.assetsRoot(minecraftRoot), "indexes");
             tasks.add(task("asset-index-" + metadata.getAssetsIndexId(),
-                    metadata.getAssetsIndexUrl(), metadata.getAssetsIndexSha1(),
-                    new File(indexes, metadata.getAssetsIndexId() + ".json")));
+                    metadata.getAssetsIndexUrl(),
+                    new File(indexes, metadata.getAssetsIndexId() + ".json"),
+                    metadata.getAssetsIndexSha1()));
         }
         return tasks;
     }
 
-    private DownloadTask task(String name, URL url, String sha1, File destination) {
+    private DownloadTask task(String name, URL url, File destination, String sha1) {
         if (sha1 == null || sha1.trim().isEmpty()) {
             throw new IllegalArgumentException("Missing SHA-1 for " + name);
         }
-        return new DownloadTask(name, url, sha1, destination);
+        return new DownloadTask(name, url, destination, sha1);
     }
 }
