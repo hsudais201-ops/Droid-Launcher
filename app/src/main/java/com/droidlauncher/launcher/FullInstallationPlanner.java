@@ -11,6 +11,8 @@ import java.util.List;
 
 /** Builds the complete downloadable installation set from a Minecraft version JSON and asset index. */
 public final class FullInstallationPlanner {
+    private final MinecraftLibraryMetadataParser libraryParser = new MinecraftLibraryMetadataParser();
+
     public List<DownloadTask> plan(String versionJson, String assetIndexJson, File minecraftRoot) throws IOException {
         if (versionJson == null || versionJson.trim().isEmpty()) throw new IOException("version JSON is empty");
         if (minecraftRoot == null) throw new IOException("minecraft root is required");
@@ -29,19 +31,9 @@ public final class FullInstallationPlanner {
                     client == null ? "" : client.optString("sha1", ""),
                     new File(versionDir, id + ".jar"));
 
-            JSONArray libraries = root.optJSONArray("libraries");
-            if (libraries != null) {
-                for (int i = 0; i < libraries.length(); i++) {
-                    JSONObject library = libraries.optJSONObject(i);
-                    if (library == null) continue;
-                    JSONObject artifact = library.optJSONObject("downloads");
-                    artifact = artifact == null ? null : artifact.optJSONObject("artifact");
-                    if (artifact == null) continue;
-                    String path = artifact.optString("path", "");
-                    addTask(tasks, "library-" + library.optString("name", String.valueOf(i)),
-                            artifact.optString("url", ""), artifact.optString("sha1", ""),
-                            safeRelative(minecraftRoot, "libraries", path));
-                }
+            for (LibraryDependency dependency : libraryParser.parse(versionJson, minecraftRoot)) {
+                addTask(tasks, "library-" + dependency.getCoordinate(), dependency.getUrl(),
+                        dependency.getSha1(), dependency.getFile());
             }
 
             if (assetIndexJson != null && !assetIndexJson.trim().isEmpty()) {
@@ -79,15 +71,5 @@ public final class FullInstallationPlanner {
         if (url == null || url.trim().isEmpty()) throw new IOException("Missing download URL for " + name);
         if (sha1 == null || sha1.trim().isEmpty()) throw new IOException("Missing SHA-1 for " + name);
         tasks.add(new DownloadTask(name, new URL(url), destination, sha1));
-    }
-
-    private File safeRelative(File root, String first, String path) throws IOException {
-        if (path == null || path.trim().isEmpty() || path.startsWith("/") || path.startsWith("\\") || path.contains("..")) {
-            throw new IOException("Unsafe library path: " + path);
-        }
-        File base = new File(root, first).getCanonicalFile();
-        File result = new File(base, path).getCanonicalFile();
-        if (!result.toPath().startsWith(base.toPath())) throw new IOException("Unsafe library path: " + path);
-        return result;
     }
 }
