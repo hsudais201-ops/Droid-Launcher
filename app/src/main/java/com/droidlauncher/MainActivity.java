@@ -9,6 +9,8 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.droidlauncher.launcher.InstallationState;
+import com.droidlauncher.launcher.InstallationStateStore;
 import com.droidlauncher.launcher.LaunchObservation;
 import com.droidlauncher.launcher.LaunchState;
 import com.droidlauncher.launcher.LaunchUiController;
@@ -26,10 +28,12 @@ public final class MainActivity extends Activity {
     private ProfileStore profileStore;
     private MinecraftProfile profile;
     private TextView profileStatus;
+    private TextView installationStatus;
     private TextView launchStatus;
     private TextView launchDetail;
     private Button playButton;
     private LaunchUiController launchController;
+    private InstallationStateStore installationStateStore;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -43,6 +47,7 @@ public final class MainActivity extends Activity {
             profile = new MinecraftProfile("default", "latest", "", "", 512, 2048);
             profileStore.save(profile);
         }
+        installationStateStore = new InstallationStateStore(this);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -75,6 +80,15 @@ public final class MainActivity extends Activity {
         statusParams.topMargin = 24;
         root.addView(profileStatus, statusParams);
         refreshProfileStatus();
+
+        installationStatus = new TextView(this);
+        installationStatus.setTextColor(Color.rgb(190, 200, 215));
+        installationStatus.setTextSize(13);
+        installationStatus.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams installParams = new LinearLayout.LayoutParams(-1, -2);
+        installParams.topMargin = 14;
+        root.addView(installationStatus, installParams);
+        refreshInstallationStatus();
 
         launchStatus = new TextView(this);
         launchStatus.setTextColor(Color.WHITE);
@@ -117,6 +131,12 @@ public final class MainActivity extends Activity {
         setContentView(root);
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (installationStateStore != null) refreshInstallationStatus();
+    }
+
     private void startMinecraft() {
         ProfileValidator.ValidationResult result = ProfileValidator.validate(profile);
         if (!result.isValid()) {
@@ -147,6 +167,21 @@ public final class MainActivity extends Activity {
                 "net.minecraft.client.main.Main", Collections.emptyList(), Collections.emptyList(),
                 Collections.emptyMap());
         playButton.postDelayed(() -> playButton.setEnabled(true), 1000L);
+    }
+
+    private void refreshInstallationStatus() {
+        InstallationState state = installationStateStore.load();
+        if (state.getVersionId().isEmpty()) {
+            installationStatus.setText("Installation: not started");
+            return;
+        }
+        String progress = state.getTotalTasks() > 0
+                ? " (" + state.getCompletedTasks() + "/" + state.getTotalTasks() + ")"
+                : "";
+        String detail = state.getCurrentTask().isEmpty() ? "" : "\n" + state.getCurrentTask();
+        String error = state.getError().isEmpty() ? "" : "\n" + state.getError();
+        installationStatus.setText("Installation " + state.getVersionId() + ": "
+                + state.getStatus().name() + progress + detail + error);
     }
 
     private void refreshProfileStatus() {
