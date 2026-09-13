@@ -23,11 +23,9 @@ public final class LaunchObservation {
     }
 
     public static LaunchObservation running(Process process) {
-        long pid = -1L;
-        if (process != null) {
-            try { pid = process.pid(); } catch (UnsupportedOperationException ignored) { }
-        }
-        return new LaunchObservation(LaunchState.RUNNING, pid, Integer.MIN_VALUE, "",
+        // Process.pid() is not available on all Android Java APIs/desugaring configurations.
+        // Keep the diagnostic PID unknown rather than using a misleading surrogate value.
+        return new LaunchObservation(LaunchState.RUNNING, -1L, Integer.MIN_VALUE, "",
                 LaunchDiagnostics.Category.NONE);
     }
 
