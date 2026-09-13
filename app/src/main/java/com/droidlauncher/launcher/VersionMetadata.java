@@ -39,4 +39,8 @@ public final class VersionMetadata {
     public String getAssetsIndexId() { return assetsIndexId; }
     public URL getAssetsIndexUrl() { return assetsIndexUrl; }
     public String getAssetsIndexSha1() { return assetsIndexSha1; }
+
+    /** Compatibility aliases retained for older installation code. */
+    public URL getAssetsUrl() { return assetsIndexUrl; }
+    public String getAssetsSha1() { return assetsIndexSha1; }
 }
