@@ -9,6 +9,8 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.droidlauncher.launcher.LaunchObservation;
+import com.droidlauncher.launcher.LaunchState;
 import com.droidlauncher.launcher.LaunchUiController;
 import com.droidlauncher.launcher.MinecraftProfile;
 import com.droidlauncher.launcher.ProfileStore;
@@ -18,6 +20,7 @@ import com.droidlauncher.runtime.JavaRuntimeDetector;
 
 import java.io.File;
 import java.util.Collections;
+import java.util.List;
 
 public final class MainActivity extends Activity {
     private ProfileStore profileStore;
@@ -90,8 +93,7 @@ public final class MainActivity extends Activity {
         root.addView(launchDetail, detailParams);
 
         launchController = new LaunchUiController(launchStatus, launchDetail);
-        launchController.onLaunchUpdate(com.droidlauncher.launcher.LaunchObservation.state(
-                com.droidlauncher.launcher.LaunchState.IDLE, "Launcher ready"));
+        launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.IDLE, "Launcher ready"));
 
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER);
@@ -118,19 +120,25 @@ public final class MainActivity extends Activity {
     private void startMinecraft() {
         ProfileValidator.ValidationResult result = ProfileValidator.validate(profile);
         if (!result.isValid()) {
-            launchController.onLaunchUpdate(com.droidlauncher.launcher.LaunchObservation.state(
-                    com.droidlauncher.launcher.LaunchState.FAILED,
-                    result.getMessage()));
+            launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED, result.getMessage()));
             return;
         }
 
         playButton.setEnabled(false);
         File gameDirectory = new File(profile.getGameDirectory());
         File nativesDirectory = new File(gameDirectory, "natives");
-        JavaRuntime runtime = new JavaRuntimeDetector().detect(
-                profile.getJavaExecutable(),
-                8,
-                Integer.MAX_VALUE);
+        List<JavaRuntime> runtimes = new JavaRuntimeDetector().detect();
+        JavaRuntime runtime = null;
+        if (!profile.getJavaExecutable().trim().isEmpty()) {
+            for (JavaRuntime candidate : runtimes) {
+                if (candidate.getJavaExecutable().getAbsolutePath().equals(profile.getJavaExecutable())) {
+                    runtime = candidate;
+                    break;
+                }
+            }
+        } else if (!runtimes.isEmpty()) {
+            runtime = runtimes.get(0);
+        }
 
         String classpath = new File(gameDirectory, "versions/" + profile.getVersion()
                 + "/" + profile.getVersion() + ".jar").getAbsolutePath();
