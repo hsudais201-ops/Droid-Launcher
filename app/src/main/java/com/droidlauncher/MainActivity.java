@@ -15,6 +15,8 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.droidlauncher.launcher.AccountStore;
+import com.droidlauncher.launcher.AuthenticatedProfile;
 import com.droidlauncher.launcher.InstallationState;
 import com.droidlauncher.launcher.InstallationStateStore;
 import com.droidlauncher.launcher.LaunchObservation;
@@ -27,6 +29,7 @@ import com.droidlauncher.launcher.MinecraftLaunchArguments;
 import com.droidlauncher.launcher.MinecraftLaunchClasspath;
 import com.droidlauncher.launcher.MinecraftNativePreparer;
 import com.droidlauncher.launcher.MinecraftProfile;
+import com.droidlauncher.launcher.MinecraftSessionRestorer;
 import com.droidlauncher.launcher.MinecraftXboxAuthenticator;
 import com.droidlauncher.launcher.MicrosoftAuthConfig;
 import com.droidlauncher.launcher.MicrosoftDeviceCode;
@@ -35,8 +38,6 @@ import com.droidlauncher.launcher.NativeAbi;
 import com.droidlauncher.launcher.ProfileStore;
 import com.droidlauncher.launcher.ProfileValidator;
 import com.droidlauncher.launcher.SecureTokenStore;
-import com.droidlauncher.launcher.AccountStore;
-import com.droidlauncher.launcher.AuthenticatedProfile;
 import com.droidlauncher.runtime.JavaRuntime;
 import com.droidlauncher.runtime.JavaRuntimeDetector;
 
@@ -55,6 +56,7 @@ public final class MainActivity extends Activity {
     private TextView launchStatus;
     private TextView launchDetail;
     private Button playButton;
+    private Button signInButton;
     private LaunchUiController launchController;
     private InstallationStateStore installationStateStore;
     private MicrosoftSignInCoordinator signInCoordinator;
@@ -62,6 +64,7 @@ public final class MainActivity extends Activity {
     private AccountStore accountStore;
     private MinecraftAuthSession minecraftSession;
     private final AtomicBoolean installing = new AtomicBoolean(false);
+    private final AtomicBoolean restoringSession = new AtomicBoolean(false);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -110,7 +113,6 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2);
         statusParams.topMargin = 18;
         root.addView(profileStatus, statusParams);
-        refreshProfileStatus();
 
         accountStatus = new TextView(this);
         accountStatus.setTextColor(Color.rgb(190, 200, 215));
@@ -119,11 +121,10 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams accountParams = new LinearLayout.LayoutParams(-1, -2);
         accountParams.topMargin = 10;
         root.addView(accountStatus, accountParams);
-        refreshAccountStatus();
 
         LinearLayout accountActions = new LinearLayout(this);
         accountActions.setGravity(Gravity.CENTER);
-        Button signInButton = new Button(this);
+        signInButton = new Button(this);
         signInButton.setText("SIGN IN WITH MICROSOFT");
         signInButton.setOnClickListener(v -> startMicrosoftSignIn());
         accountActions.addView(signInButton, new LinearLayout.LayoutParams(300, 64));
@@ -144,7 +145,6 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams installParams = new LinearLayout.LayoutParams(-1, -2);
         installParams.topMargin = 10;
         root.addView(installationStatus, installParams);
-        refreshInstallationStatus();
 
         launchStatus = new TextView(this);
         launchStatus.setTextColor(Color.WHITE);
@@ -184,6 +184,52 @@ public final class MainActivity extends Activity {
         root.addView(actions, actionsParams);
 
         setContentView(root);
+        refreshProfileStatus();
+        refreshInstallationStatus();
+        refreshAccountStatus();
+        restoreSavedMinecraftSession();
+    }
+
+    private void restoreSavedMinecraftSession() {
+        String clientId = getString(com.droidlauncher.R.string.microsoft_client_id).trim();
+        if (clientId.isEmpty() || restoringSession.getAndSet(true)) return;
+        launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.PREPARING,
+                "Restoring saved Minecraft account..."));
+        signInButton.setEnabled(false);
+        new Thread(() -> {
+            try {
+                MinecraftAuthSession restored = new MinecraftSessionRestorer(this)
+                        .restore(new MicrosoftAuthConfig(clientId));
+                if (restored == null) {
+                    runOnUiThread(() -> {
+                        signInButton.setEnabled(true);
+                        refreshAccountStatus();
+                        launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.IDLE,
+                                "Sign in with Microsoft to play"));
+                    });
+                    return;
+                }
+                minecraftSession = restored;
+                String name = restored.getProfile().getDisplayName();
+                runOnUiThread(() -> {
+                    signInButton.setEnabled(true);
+                    refreshAccountStatus();
+                    launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.IDLE,
+                            "Account restored: " + name));
+                });
+            } catch (Exception e) {
+                minecraftSession = null;
+                String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+                runOnUiThread(() -> {
+                    signInButton.setEnabled(true);
+                    refreshAccountStatus();
+                    launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.IDLE,
+                            "Saved session needs sign-in again: " + message));
+                });
+            } finally {
+                restoringSession.set(false);
+            }
+        }, "droid-session-restore").start();
     }
 
     private void startMicrosoftSignIn() {
@@ -194,19 +240,21 @@ public final class MainActivity extends Activity {
         }
         launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.PREPARING,
                 "Starting Microsoft sign-in..."));
+        signInButton.setEnabled(false);
         signInCoordinator.signIn(new MicrosoftAuthConfig(clientId), new MicrosoftSignInCoordinator.Listener() {
             @Override public void onDeviceCode(MicrosoftDeviceCode code) {
                 runOnUiThread(() -> showDeviceCode(code));
             }
             @Override public void onSuccess(com.droidlauncher.launcher.MicrosoftOAuthClient.MicrosoftTokenResponse token) {
-                if (!token.getRefreshToken().isEmpty()) {
-                    try {
-                        tokenStore.saveRefreshToken(token.getRefreshToken());
-                    } catch (Exception e) {
-                        runOnUiThread(() -> Toast.makeText(MainActivity.this,
-                                "Could not save account securely: " + e.getMessage(), Toast.LENGTH_LONG).show());
-                        return;
-                    }
+                try {
+                    if (!token.getRefreshToken().isEmpty()) tokenStore.saveRefreshToken(token.getRefreshToken());
+                } catch (Exception e) {
+                    runOnUiThread(() -> {
+                        signInButton.setEnabled(true);
+                        Toast.makeText(MainActivity.this,
+                                "Could not save account securely: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    });
+                    return;
                 }
                 launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.PREPARING,
                         "Microsoft authorized. Verifying Minecraft account..."));
@@ -215,6 +263,7 @@ public final class MainActivity extends Activity {
             }
             @Override public void onError(String message) {
                 runOnUiThread(() -> {
+                    signInButton.setEnabled(true);
                     launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED, message));
                     Toast.makeText(MainActivity.this, "Microsoft sign-in failed: " + message, Toast.LENGTH_LONG).show();
                 });
@@ -229,6 +278,7 @@ public final class MainActivity extends Activity {
             AuthenticatedProfile authenticated = session.getProfile();
             accountStore.save(authenticated);
             runOnUiThread(() -> {
+                signInButton.setEnabled(true);
                 refreshAccountStatus();
                 launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.IDLE,
                         "Minecraft account ready: " + authenticated.getDisplayName()));
@@ -239,6 +289,7 @@ public final class MainActivity extends Activity {
             String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
             minecraftSession = null;
             runOnUiThread(() -> {
+                signInButton.setEnabled(true);
                 refreshAccountStatus();
                 launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED,
                         "Minecraft authentication failed: " + message));
@@ -285,9 +336,12 @@ public final class MainActivity extends Activity {
         }
         try {
             String token = tokenStore.loadRefreshToken();
+            String savedName = accountStore.getSelectedDisplayName();
             accountStatus.setText(token.isEmpty()
                     ? "Minecraft account: not connected"
-                    : "Microsoft account: authorized • Minecraft session required");
+                    : (savedName.isEmpty()
+                        ? "Microsoft account: authorized • restoring Minecraft session"
+                        : "Microsoft account: authorized • saved as " + savedName));
         } catch (Exception e) {
             accountStatus.setText("Microsoft account: token recovery error");
         }
