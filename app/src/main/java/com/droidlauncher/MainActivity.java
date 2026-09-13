@@ -8,12 +8,16 @@ import android.view.Gravity;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import com.droidlauncher.launcher.AccountSessionManager;
+import com.droidlauncher.launcher.AuthenticatedProfile;
 import com.droidlauncher.launcher.InstallationState;
 import com.droidlauncher.launcher.InstallationStateStore;
 import com.droidlauncher.launcher.LaunchObservation;
 import com.droidlauncher.launcher.LaunchState;
 import com.droidlauncher.launcher.LaunchUiController;
+import com.droidlauncher.launcher.MinecraftAuthSession;
 import com.droidlauncher.launcher.MinecraftDownloadOrchestrator;
 import com.droidlauncher.launcher.MinecraftInstallationService;
 import com.droidlauncher.launcher.MinecraftLaunchArguments;
@@ -37,15 +41,16 @@ public final class MainActivity extends Activity {
     private MinecraftProfile profile;
     private TextView profileStatus;
     private TextView installationStatus;
+    private TextView accountStatus;
     private TextView launchStatus;
     private TextView launchDetail;
     private Button playButton;
     private LaunchUiController launchController;
     private InstallationStateStore installationStateStore;
+    private AccountSessionManager accountSessionManager;
     private final AtomicBoolean installing = new AtomicBoolean(false);
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
+    @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(Color.rgb(5, 6, 10));
         getWindow().setNavigationBarColor(Color.rgb(5, 6, 10));
@@ -57,6 +62,7 @@ public final class MainActivity extends Activity {
             profileStore.save(profile);
         }
         installationStateStore = new InstallationStateStore(this);
+        accountSessionManager = new AccountSessionManager(this);
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -73,7 +79,7 @@ public final class MainActivity extends Activity {
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Minecraft Java • Real Launch Arguments");
+        subtitle.setText("Minecraft Java • Account Manager");
         subtitle.setTextColor(Color.LTGRAY);
         subtitle.setTextSize(15);
         subtitle.setGravity(Gravity.CENTER);
@@ -89,6 +95,34 @@ public final class MainActivity extends Activity {
         statusParams.topMargin = 24;
         root.addView(profileStatus, statusParams);
         refreshProfileStatus();
+
+        accountStatus = new TextView(this);
+        accountStatus.setTextColor(Color.rgb(190, 200, 215));
+        accountStatus.setTextSize(13);
+        accountStatus.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams accountParams = new LinearLayout.LayoutParams(-1, -2);
+        accountParams.topMargin = 12;
+        root.addView(accountStatus, accountParams);
+        refreshAccountStatus();
+
+        LinearLayout accountActions = new LinearLayout(this);
+        accountActions.setGravity(Gravity.CENTER);
+        Button signInButton = new Button(this);
+        signInButton.setText("SIGN IN");
+        signInButton.setOnClickListener(v -> Toast.makeText(this,
+                "Microsoft account sign-in needs your configured public client ID.", Toast.LENGTH_LONG).show());
+        accountActions.addView(signInButton, new LinearLayout.LayoutParams(220, 68));
+
+        Button signOutButton = new Button(this);
+        signOutButton.setText("SIGN OUT");
+        signOutButton.setOnClickListener(v -> {
+            accountSessionManager.signOut();
+            refreshAccountStatus();
+        });
+        LinearLayout.LayoutParams signOutParams = new LinearLayout.LayoutParams(220, 68);
+        signOutParams.leftMargin = 16;
+        accountActions.addView(signOutButton, signOutParams);
+        root.addView(accountActions);
 
         installationStatus = new TextView(this);
         installationStatus.setTextColor(Color.rgb(190, 200, 215));
@@ -120,7 +154,6 @@ public final class MainActivity extends Activity {
 
         LinearLayout actions = new LinearLayout(this);
         actions.setGravity(Gravity.CENTER);
-
         playButton = new Button(this);
         playButton.setText("PLAY");
         playButton.setTextSize(18);
@@ -140,10 +173,10 @@ public final class MainActivity extends Activity {
         setContentView(root);
     }
 
-    @Override
-    protected void onResume() {
+    @Override protected void onResume() {
         super.onResume();
         if (installationStateStore != null) refreshInstallationStatus();
+        if (accountSessionManager != null) refreshAccountStatus();
     }
 
     private void startMinecraft() {
@@ -152,6 +185,14 @@ public final class MainActivity extends Activity {
         if (!result.isValid()) {
             installing.set(false);
             launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED, result.getMessage()));
+            return;
+        }
+
+        MinecraftAuthSession session = accountSessionManager.loadSavedSession();
+        if (session == null) {
+            installing.set(false);
+            launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED,
+                    "Sign in with Microsoft before launching Minecraft"));
             return;
         }
 
@@ -168,17 +209,16 @@ public final class MainActivity extends Activity {
                 installationStateStore.save(new InstallationState(plan.getMetadata().getId(),
                         InstallationState.Status.RUNNING, 0, total, "preparing", "", System.currentTimeMillis()));
                 postInstallationStatus("Installing Minecraft " + plan.getMetadata().getId() + "...", false);
-
                 service.install(plan, new MinecraftDownloadOrchestrator(), progress -> {
                     installationStateStore.save(new InstallationState(plan.getMetadata().getId(),
-                            InstallationState.Status.RUNNING, progress.getCompletedTasks(),
-                            progress.getTotalTasks(), progress.getTaskName(), "", System.currentTimeMillis()));
+                            InstallationState.Status.RUNNING, progress.getCompletedTasks(), progress.getTotalTasks(),
+                            progress.getTaskName(), "", System.currentTimeMillis()));
                     postInstallationStatus("Installing " + progress.getCompletedTasks() + "/"
                             + progress.getTotalTasks(), false);
                 });
 
-                MinecraftLaunchClasspath.Result resolved = new MinecraftLaunchClasspath()
-                        .resolve(plan.getVersionJson(), gameDirectory);
+                MinecraftLaunchClasspath.Result resolved = new MinecraftLaunchClasspath().resolve(
+                        plan.getVersionJson(), gameDirectory);
                 File nativesDirectory = new File(gameDirectory, "natives");
                 File preparedNatives = new MinecraftNativePreparer().prepare(
                         resolved.getNativeLibraries(), NativeAbi.detect(), nativesDirectory);
@@ -186,7 +226,8 @@ public final class MainActivity extends Activity {
                 installationStateStore.save(new InstallationState(plan.getMetadata().getId(),
                         InstallationState.Status.COMPLETED, total, total, "", "", System.currentTimeMillis()));
                 postInstallationStatus("Minecraft installed and launch files verified.", false);
-                runOnUiThread(() -> launchInstalledVersion(gameDirectory, plan, resolved.getClasspath(), preparedNatives));
+                runOnUiThread(() -> launchInstalledVersion(gameDirectory, plan,
+                        resolved.getClasspath(), preparedNatives, session));
             } catch (Exception e) {
                 String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
                 installationStateStore.save(new InstallationState(profile.getVersion(),
@@ -199,18 +240,11 @@ public final class MainActivity extends Activity {
         }, "droid-install-and-launch").start();
     }
 
-    private void postInstallationStatus(String message, boolean failed) {
-        runOnUiThread(() -> {
-            installationStatus.setText(message);
-            launchController.onLaunchUpdate(LaunchObservation.state(
-                    failed ? LaunchState.FAILED : LaunchState.PREPARING, message));
-        });
-    }
-
     private void launchInstalledVersion(File gameDirectory,
                                         MinecraftInstallationService.InstallationPlan plan,
                                         String classpath,
-                                        File nativesDirectory) {
+                                        File nativesDirectory,
+                                        MinecraftAuthSession session) {
         List<JavaRuntime> runtimes = new JavaRuntimeDetector().detect();
         JavaRuntime runtime = null;
         if (!profile.getJavaExecutable().trim().isEmpty()) {
@@ -220,19 +254,19 @@ public final class MainActivity extends Activity {
                     break;
                 }
             }
-        } else if (!runtimes.isEmpty()) {
-            runtime = runtimes.get(0);
-        }
+        } else if (!runtimes.isEmpty()) runtime = runtimes.get(0);
         if (runtime == null) {
             launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED, "No usable Java runtime found"));
             return;
         }
+
         String mainClass = plan.getMetadata().getMainClass().isEmpty()
                 ? "net.minecraft.client.main.Main" : plan.getMetadata().getMainClass();
-
+        AuthenticatedProfile authenticated = session.getProfile();
         List<String> gameArguments = new MinecraftLaunchArguments().build(
-                plan.getMetadata().getId(), mainClass, profile.getId(), "", "0",
-                gameDirectory, new File(gameDirectory, "assets"), plan.getMetadata().getAssetsIndexId());
+                plan.getMetadata().getId(), mainClass, authenticated.getDisplayName(),
+                session.getMinecraftAccessToken(), authenticated.getUuid(), gameDirectory,
+                new File(gameDirectory, "assets"), plan.getMetadata().getAssetsIndexId());
         ArrayList<String> jvmArguments = new ArrayList<>();
         jvmArguments.add("-Djava.library.path=" + nativesDirectory.getAbsolutePath());
         jvmArguments.add("-Xms" + profile.getMinRamMb() + "M");
@@ -240,6 +274,20 @@ public final class MainActivity extends Activity {
 
         launchController.launch(runtime, gameDirectory, nativesDirectory, classpath,
                 mainClass, jvmArguments, gameArguments, Collections.emptyMap());
+    }
+
+    private void refreshAccountStatus() {
+        MinecraftAuthSession session = accountSessionManager.loadSavedSession();
+        if (session == null) accountStatus.setText("Account: signed out");
+        else accountStatus.setText("Account: " + session.getProfile().getDisplayName());
+    }
+
+    private void postInstallationStatus(String message, boolean failed) {
+        runOnUiThread(() -> {
+            installationStatus.setText(message);
+            launchController.onLaunchUpdate(LaunchObservation.state(
+                    failed ? LaunchState.FAILED : LaunchState.PREPARING, message));
+        });
     }
 
     private void refreshInstallationStatus() {
@@ -264,8 +312,7 @@ public final class MainActivity extends Activity {
                 + "\nStatus: " + state);
     }
 
-    @Override
-    protected void onDestroy() {
+    @Override protected void onDestroy() {
         if (launchController != null) launchController.shutdown();
         super.onDestroy();
     }
