@@ -1,6 +1,5 @@
 package com.droidlauncher.launcher;
 
-import java.io.IOException;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -70,7 +69,8 @@ public final class InstallationController {
         if (listener != null) listener.onState(state);
     }
 
-    private static final class InstallationCancelledException extends IOException {
+    /** Unchecked so cancellation can safely abort a progress callback. */
+    private static final class InstallationCancelledException extends RuntimeException {
         InstallationCancelledException() { super("cancelled"); }
     }
 }
