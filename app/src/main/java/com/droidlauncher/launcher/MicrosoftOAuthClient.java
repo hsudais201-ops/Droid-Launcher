@@ -80,12 +80,11 @@ public final class MicrosoftOAuthClient {
             writeBody(connection, body);
             int code = connection.getResponseCode();
             String response = read(connection, code);
-            if (code < 200 || code >= 300) {
-                throw new IOException("OAuth HTTP " + code + ": " + response);
+            try {
+                return new JSONObject(response);
+            } catch (org.json.JSONException e) {
+                throw new IOException("Invalid OAuth response (HTTP " + code + ")", e);
             }
-            return new JSONObject(response);
-        } catch (org.json.JSONException e) {
-            throw new IOException("Invalid OAuth response", e);
         } finally {
             connection.disconnect();
         }
