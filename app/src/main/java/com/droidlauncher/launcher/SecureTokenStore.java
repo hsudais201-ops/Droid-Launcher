@@ -4,16 +4,15 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.security.keystore.KeyGenParameterSpec;
 import android.security.keystore.KeyProperties;
+import android.util.Base64;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
-import java.util.Base64;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.GCMParameterSpec;
-import javax.crypto.spec.SecretKeySpec;
 
 /** Small Android Keystore-backed token store. Tokens are never written in plaintext. */
 public final class SecureTokenStore {
@@ -37,8 +36,8 @@ public final class SecureTokenStore {
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(128, iv));
         byte[] encrypted = cipher.doFinal(token.trim().getBytes(StandardCharsets.UTF_8));
         prefs.edit()
-                .putString(TOKEN, Base64.getEncoder().encodeToString(iv) + "."
-                        + Base64.getEncoder().encodeToString(encrypted))
+                .putString(TOKEN, Base64.encodeToString(iv, Base64.NO_WRAP) + "."
+                        + Base64.encodeToString(encrypted, Base64.NO_WRAP))
                 .apply();
     }
 
@@ -47,8 +46,8 @@ public final class SecureTokenStore {
         if (stored == null || stored.isEmpty()) return "";
         String[] parts = stored.split("\\.", 2);
         if (parts.length != 2) throw new IllegalStateException("Corrupt authentication token");
-        byte[] iv = Base64.getDecoder().decode(parts[0]);
-        byte[] encrypted = Base64.getDecoder().decode(parts[1]);
+        byte[] iv = Base64.decode(parts[0], Base64.DEFAULT);
+        byte[] encrypted = Base64.decode(parts[1], Base64.DEFAULT);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), new GCMParameterSpec(128, iv));
         return new String(cipher.doFinal(encrypted), StandardCharsets.UTF_8);
