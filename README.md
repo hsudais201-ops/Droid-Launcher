@@ -3,26 +3,23 @@
 Minecraft Java Android launcher project.
 
 ## Current baseline
-- Step 160 performance system: Auto / Low / Balanced / High
-- Adaptive RAM and JVM tuning
-- Minecraft `options.txt` performance tuning
-- Landscape-first launcher UI
-- Droid Launcher branding
-- GitHub Actions/cloud-build direction
+- Landscape-first Droid Launcher UI
+- Performance-tuning architecture reserved for Auto / Low / Balanced / High modes
+- Adaptive RAM/JVM tuning planned
+- Minecraft `options.txt` tuning planned
+- GitHub Actions cloud build
 
-## Step 161 — Real Launch Engine
-The next development phase focuses on the actual Minecraft launch pipeline:
+## Step 161 — Real Launch Engine foundation
+This repository now contains the first real Android application foundation:
 
-1. Minecraft version/profile management
-2. Java runtime selection and validation
-3. Library and asset resolution
-4. Native library extraction
-5. Classpath construction
-6. GLFW/LWJGL environment setup
-7. Minecraft process launch and monitoring
-8. Crash diagnostics and automatic recovery
+1. Android app module and namespace
+2. Landscape launcher entry activity
+3. Droid Launcher branding
+4. Java 17 Android compilation target
+5. Wrapper-free GitHub Actions build using Gradle 9.6.0
+6. Debug APK artifact upload
 
-The Step 160 source remains the baseline while the project is migrated from the legacy CraftDroid repository into this repository.
+The Minecraft runtime pipeline remains the next implementation layer: profile/version management, Java runtime validation, library and asset resolution, native extraction, classpath construction, GLFW/LWJGL setup, process launch, monitoring, crash diagnostics, and recovery.
 
 ## Build status
-APK generation and real Minecraft boot are **not yet claimed as verified** until GitHub Actions completes the required build and runtime tests.
+The project has a configured cloud-build path, but APK generation is **not claimed as verified** until GitHub Actions completes successfully. Real Minecraft boot is also **not yet verified**.
