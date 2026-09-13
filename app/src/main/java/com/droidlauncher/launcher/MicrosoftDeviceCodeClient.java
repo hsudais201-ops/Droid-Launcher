@@ -41,7 +41,12 @@ public final class MicrosoftDeviceCodeClient {
             String body = form("grant_type", "urn:ietf:params:oauth:grant-type:device_code",
                     "client_id", config.getClientId(), "device_code", deviceCode.getDeviceCode());
             HttpResult result = postFormRaw(MicrosoftAuthConfig.TOKEN_ENDPOINT, body);
-            JSONObject json = new JSONObject(result.body);
+            final JSONObject json;
+            try {
+                json = new JSONObject(result.body);
+            } catch (Exception e) {
+                throw new IOException("Invalid Microsoft token response", e);
+            }
             if (result.code == HttpURLConnection.HTTP_OK) {
                 String access = json.optString("access_token", "").trim();
                 String refresh = json.optString("refresh_token", "").trim();
