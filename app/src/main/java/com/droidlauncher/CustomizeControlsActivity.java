@@ -9,12 +9,12 @@ import android.os.Bundle;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.SeekBar;
 import android.widget.Spinner;
-import android.widget.ArrayAdapter;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -113,17 +113,14 @@ public final class CustomizeControlsActivity extends Activity {
             chip.setGravity(Gravity.CENTER);
             chip.setTextSize(11);
             chip.setAlpha(Math.max(0.15f, Math.min(1f, config.opacity)));
-            GradientDrawable bg = shape(config.shape);
-            chip.setBackground(bg);
+            chip.setBackground(shape(config.shape));
             chip.setTag(config.id);
-            float px = config.x * w;
-            float py = config.y * h;
             int cw = Math.max(54, (int) (config.width * w));
             int ch = Math.max(44, (int) (config.height * h));
             FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(cw, ch);
             editor.addView(chip, lp);
-            chip.setX(clamp(px, 0, Math.max(0, w - cw)));
-            chip.setY(clamp(py, 0, Math.max(0, h - ch)));
+            chip.setX(clamp(config.x * w, 0, Math.max(0, w - cw)));
+            chip.setY(clamp(config.y * h, 0, Math.max(0, h - ch)));
             chip.setOnClickListener(v -> select(config));
             chip.setOnTouchListener((v, event) -> handleDrag(v, event, config));
         }
@@ -173,9 +170,19 @@ public final class CustomizeControlsActivity extends Activity {
         TextView heading = label(config.label + "  •  " + config.action.getLabel());
         heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         propertyPanel.addView(heading);
-
         addText("Position: " + percent(config.x) + ", " + percent(config.y));
-        addText("Size: " + percent(config.width) + " × " + percent(config.height));
+
+        TextView widthLabel = label("Width  " + percent(config.width));
+        propertyPanel.addView(widthLabel);
+        SeekBar widthBar = sizeBar(config.width);
+        widthBar.setOnSeekBarChangeListener(sizeListener(config, widthLabel, true));
+        propertyPanel.addView(widthBar);
+
+        TextView heightLabel = label("Height  " + percent(config.height));
+        propertyPanel.addView(heightLabel);
+        SeekBar heightBar = sizeBar(config.height);
+        heightBar.setOnSeekBarChangeListener(sizeListener(config, heightLabel, false));
+        propertyPanel.addView(heightBar);
 
         TextView opacityLabel = label("Opacity  " + Math.round(config.opacity * 100) + "%");
         propertyPanel.addView(opacityLabel);
@@ -223,17 +230,36 @@ public final class CustomizeControlsActivity extends Activity {
             showProperties(config);
         });
         propertyPanel.addView(visibility, withTop(fixed(-1, 52), 12));
-
         Button duplicate = actionButton("DUPLICATE", v -> duplicate(config));
         propertyPanel.addView(duplicate, withTop(fixed(-1, 52), 8));
         Button delete = actionButton("DELETE", v -> delete(config));
         propertyPanel.addView(delete, withTop(fixed(-1, 52), 8));
     }
 
+    private SeekBar sizeBar(float value) {
+        SeekBar bar = new SeekBar(this);
+        bar.setMax(40);
+        bar.setProgress(Math.max(1, Math.min(40, Math.round(value * 100f))));
+        return bar;
+    }
+
+    private SeekBar.OnSeekBarChangeListener sizeListener(TouchControlConfig config, TextView label, boolean width) {
+        return new SeekBar.OnSeekBarChangeListener() {
+            public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                float normalized = Math.max(0.04f, value / 100f);
+                if (width) config.width = normalized; else config.height = normalized;
+                label.setText((width ? "Width  " : "Height  ") + percent(normalized));
+                renderControls();
+            }
+            public void onStartTrackingTouch(SeekBar bar) {}
+            public void onStopTrackingTouch(SeekBar bar) {}
+        };
+    }
+
     private void showEmptyProperties() {
         propertyPanel.removeAllViews();
         propertyPanel.addView(label("Select a control"));
-        propertyPanel.addView(label("Drag controls to move them. Use the panel to change action, opacity, shape and visibility."));
+        propertyPanel.addView(label("Drag controls to move them. Resize, change action, opacity, shape and visibility from this panel."));
     }
 
     private void showAddDialog() {
@@ -307,16 +333,13 @@ public final class CustomizeControlsActivity extends Activity {
 
     private TextView label(String text) {
         TextView t = new TextView(this);
-        t.setText(text);
-        t.setTextColor(Color.WHITE);
-        t.setTextSize(13);
-        t.setPadding(0, 6, 0, 6);
+        t.setText(text); t.setTextColor(Color.WHITE); t.setTextSize(13); t.setPadding(0, 6, 0, 6);
         return t;
     }
 
     private void addText(String text) { propertyPanel.addView(label(text)); }
     private String percent(float value) { return Math.round(value * 100f) + "%"; }
-    private int shapeIndex(String value) { return Arrays.asList("circle", "rounded", "square").indexOf(value); }
+    private int shapeIndex(String value) { return Math.max(0, Arrays.asList("circle", "rounded", "square").indexOf(value)); }
     private float clamp(float value, float min, float max) { return Math.max(min, Math.min(max, value)); }
     private void updateSelectedStatus() {
         selectedStatus.setText(selected == null ? "Drag controls to position them. Select one to edit." :
