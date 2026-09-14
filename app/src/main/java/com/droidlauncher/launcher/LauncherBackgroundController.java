@@ -3,11 +3,14 @@ package com.droidlauncher.launcher;
 import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
+import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
 
@@ -18,11 +21,12 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-/** Loads a cached Minecraft landscape image behind the existing launcher UI. */
+/** Loads a cached Minecraft landscape image and a lightweight animated particle layer. */
 public final class LauncherBackgroundController {
     private static final String IMAGE_URL =
             "https://commons.wikimedia.org/wiki/Special:Redirect/file/Minecraft_-_Taiga.jpg";
     private static final String CACHE_FILE = "launcher-background.jpg";
+    private static final String PARTICLE_TAG = "droid-launcher-particles";
     private static final long MAX_CACHE_AGE_MS = 7L * 24L * 60L * 60L * 1000L;
 
     private LauncherBackgroundController() { }
@@ -39,12 +43,16 @@ public final class LauncherBackgroundController {
         Bitmap bitmap = decodeCache(cache);
         if (bitmap != null) {
             apply(content, bitmap);
+            installParticles(content);
             if (System.currentTimeMillis() - cache.lastModified() < MAX_CACHE_AGE_MS) return;
         }
         new Thread(() -> {
             Bitmap downloaded = download(cache);
             if (downloaded == null) return;
-            activity.runOnUiThread(() -> apply(content, downloaded));
+            activity.runOnUiThread(() -> {
+                apply(content, downloaded);
+                installParticles(content);
+            });
         }, "droid-background-loader").start();
     }
 
@@ -90,11 +98,74 @@ public final class LauncherBackgroundController {
         photo.setAlpha(150);
         Drawable shade = new ColorDrawable(Color.argb(115, 0, 0, 0));
         LayerDrawable background = new LayerDrawable(new Drawable[]{photo, shade});
-        content.getBackground();
         if (content instanceof ViewGroup) {
             View root = ((ViewGroup) content).getChildCount() > 0
                     ? ((ViewGroup) content).getChildAt(0) : null;
             if (root != null) root.setBackground(background);
+        }
+    }
+
+    private static void installParticles(View content) {
+        if (!(content instanceof ViewGroup)) return;
+        ViewGroup container = (ViewGroup) content;
+        if (container.findViewWithTag(PARTICLE_TAG) != null) return;
+        ParticleOverlayView particles = new ParticleOverlayView(content.getContext());
+        particles.setTag(PARTICLE_TAG);
+        particles.setClickable(false);
+        particles.setFocusable(false);
+        container.addView(particles, 0, new ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        particles.startAnimation();
+    }
+
+    /** Small, low-cost floating particles for visual depth; no bitmap generation or GL effects. */
+    private static final class ParticleOverlayView extends View {
+        private static final int PARTICLE_COUNT = 18;
+        private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final float[] x = new float[PARTICLE_COUNT];
+        private final float[] y = new float[PARTICLE_COUNT];
+        private final float[] radius = new float[PARTICLE_COUNT];
+        private final float[] speed = new float[PARTICLE_COUNT];
+        private long animationStart;
+        private boolean running;
+
+        ParticleOverlayView(android.content.Context context) {
+            super(context);
+            paint.setColor(Color.WHITE);
+            setAlpha(0.18f);
+            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+            for (int i = 0; i < PARTICLE_COUNT; i++) {
+                x[i] = (i * 0.173f) % 1.0f;
+                y[i] = (i * 0.271f) % 1.0f;
+                radius[i] = 1.5f + (i % 4) * 0.7f;
+                speed[i] = 0.000018f + (i % 5) * 0.000006f;
+            }
+        }
+
+        void startAnimation() {
+            if (running) return;
+            running = true;
+            animationStart = SystemClock.uptimeMillis();
+            postInvalidateOnAnimation();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            if (!running) return;
+            long elapsed = SystemClock.uptimeMillis() - animationStart;
+            float width = getWidth();
+            float height = getHeight();
+            if (width <= 0 || height <= 0) return;
+            for (int i = 0; i < PARTICLE_COUNT; i++) {
+                float drift = (elapsed * speed[i]) % 1.15f;
+                float py = (y[i] - drift + 1.15f) % 1.15f;
+                float px = x[i] + (float) Math.sin((elapsed * speed[i] * 120.0) + i) * 0.012f;
+                if (px < 0f) px += 1f;
+                if (px > 1f) px -= 1f;
+                canvas.drawCircle(px * width, py * height, radius[i], paint);
+            }
+            postInvalidateOnAnimation();
         }
     }
 }
