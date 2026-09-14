@@ -11,6 +11,15 @@ android {
         versionCode 1
         versionName '0.1.0'
         resValue 'string', 'microsoft_client_id', project.findProperty('MICROSOFT_CLIENT_ID') ?: ''
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64', 'x86'
+        }
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
     }
 
     buildFeatures {
