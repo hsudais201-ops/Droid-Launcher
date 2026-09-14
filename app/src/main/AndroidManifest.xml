@@ -7,6 +7,10 @@
         android:allowBackup="true"
         android:supportsRtl="true">
         <activity
+            android:name=".MinecraftGameplayActivity"
+            android:screenOrientation="landscape"
+            android:exported="false" />
+        <activity
             android:name=".TouchControlProfilesActivity"
             android:screenOrientation="landscape"
             android:exported="false" />
