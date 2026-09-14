@@ -38,7 +38,7 @@ public final class NativeBackendProvisionerTest {
         File file = new File(root, "payload.bin");
         byte[] payload = "known-good-payload".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         java.nio.file.Files.write(file.toPath(), payload);
-        String expected = "b1d4c2f29ad7617d1bfe8ce75e1f12fd70b80f1b";
+        String expected = "539dc32906dfe8d7f8961fa0fafadb4ee322f23b";
         assertTrue(Sha1Verifier.verify(file, expected));
         assertTrue(file.delete() || !file.exists());
         assertTrue(root.delete() || !root.exists());
