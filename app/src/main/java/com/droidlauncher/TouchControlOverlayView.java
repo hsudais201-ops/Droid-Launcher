@@ -168,13 +168,13 @@ public final class TouchControlOverlayView extends View {
             lastY.put(pointerId, y);
             inputBridge.onControlDown(hit.action);
             if (listener != null) listener.onControlDown(hit.action);
-            if (hit.action == TouchControlAction.JOYSTICK) emitJoystick(hit, pointerId, x, y);
+            if (hit.action == TouchControlAction.JOYSTICK) emitJoystick(hit, x, y);
             invalidate();
             return true;
         }
 
         TouchControlAction action = activeActions.remove(pointerId);
-        TouchControlConfig config = activeControls.remove(pointerId);
+        activeControls.remove(pointerId);
         lastX.remove(pointerId);
         lastY.remove(pointerId);
         if (action != null) {
@@ -194,25 +194,21 @@ public final class TouchControlOverlayView extends View {
             if (action == null || config == null) continue;
             float x = event.getX(i);
             float y = event.getY(i);
-            lastX.put(pointerId, x);
-            lastY.put(pointerId, y);
+            Float previousX = lastX.put(pointerId, x);
+            Float previousY = lastY.put(pointerId, y);
+            if (previousX == null || previousY == null) continue;
             if (action == TouchControlAction.JOYSTICK) {
-                emitJoystick(config, pointerId, x, y);
+                emitJoystick(config, x, y);
             } else if (action == TouchControlAction.CAMERA) {
-                float dx = (x - previous(lastX, pointerId, x)) / Math.max(1f, getWidth()) * 6f;
-                float dy = (y - previous(lastY, pointerId, y)) / Math.max(1f, getHeight()) * 6f;
+                float dx = (x - previousX) / Math.max(1f, getWidth()) * 6f;
+                float dy = (y - previousY) / Math.max(1f, getHeight()) * 6f;
                 inputBridge.onAnalogMove(action, dx, dy);
             }
         }
         invalidate();
     }
 
-    private float previous(Map<Integer, Float> values, int pointerId, float current) {
-        Float value = values.get(pointerId);
-        return value == null ? current : value;
-    }
-
-    private void emitJoystick(TouchControlConfig config, int pointerId, float x, float y) {
+    private void emitJoystick(TouchControlConfig config, float x, float y) {
         RectF rect = bounds(config, getWidth(), getHeight());
         float radius = Math.min(rect.width(), rect.height()) * 0.34f;
         float dx = x - rect.centerX();
