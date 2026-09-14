@@ -14,6 +14,11 @@ import java.util.Map;
 
 /** Bridges the real launch manager/process monitor onto Android UI safely. */
 public final class LaunchUiController implements LaunchObserver {
+    public interface LaunchCallback {
+        void onProcessStarted(Process process);
+        void onProcessExited(int exitCode);
+    }
+
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final TextView statusView;
     private final TextView detailView;
@@ -46,6 +51,19 @@ public final class LaunchUiController implements LaunchObserver {
                        List<String> jvmArguments,
                        List<String> gameArguments,
                        Map<String, String> environment) {
+        launch(runtime, gameDirectory, nativesDirectory, classpath, mainClass,
+                jvmArguments, gameArguments, environment, null);
+    }
+
+    public void launch(JavaRuntime runtime,
+                       File gameDirectory,
+                       File nativesDirectory,
+                       String classpath,
+                       String mainClass,
+                       List<String> jvmArguments,
+                       List<String> gameArguments,
+                       Map<String, String> environment,
+                       LaunchCallback callback) {
         onLaunchUpdate(LaunchObservation.state(LaunchState.PREFLIGHT, "Preparing Minecraft launch..."));
         Thread thread = new Thread(() -> {
             try {
@@ -55,7 +73,19 @@ public final class LaunchUiController implements LaunchObserver {
                         gameArguments == null ? Collections.emptyList() : gameArguments,
                         environment == null ? Collections.emptyMap() : environment);
                 onLaunchUpdate(LaunchObservation.running(process));
-                processMonitor.monitor(process, this);
+                if (callback != null) {
+                    mainHandler.post(() -> callback.onProcessStarted(process));
+                }
+                processMonitor.monitor(process, new LaunchObserver() {
+                    @Override
+                    public void onLaunchUpdate(LaunchObservation observation) {
+                        LaunchUiController.this.onLaunchUpdate(observation);
+                        if (callback != null && observation != null
+                                && observation.getState() == LaunchState.STOPPED) {
+                            mainHandler.post(() -> callback.onProcessExited(observation.getExitCode()));
+                        }
+                    }
+                });
             } catch (IOException | RuntimeException error) {
                 String message = error.getMessage() == null ? "Minecraft launch failed" : error.getMessage();
                 onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED, message));
