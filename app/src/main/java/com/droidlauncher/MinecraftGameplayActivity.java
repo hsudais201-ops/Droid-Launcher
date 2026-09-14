@@ -7,6 +7,7 @@ import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 
+import com.droidlauncher.launcher.AndroidEglRenderer;
 import com.droidlauncher.launcher.AndroidSurfaceBridge;
 import com.droidlauncher.launcher.MinecraftNativeRendererSession;
 import com.droidlauncher.launcher.MinecraftSurfaceHost;
@@ -16,6 +17,7 @@ public final class MinecraftGameplayActivity extends Activity {
     private MinecraftGameplayInputLayer gameplayLayer;
     private AndroidSurfaceBridge surfaceBridge;
     private MinecraftNativeRendererSession rendererSession;
+    private AndroidEglRenderer eglRenderer;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -38,7 +40,26 @@ public final class MinecraftGameplayActivity extends Activity {
 
         surfaceBridge = new AndroidSurfaceBridge();
         rendererSession = new MinecraftNativeRendererSession();
-        surfaceBridge.setConsumer(rendererSession);
+        eglRenderer = new AndroidEglRenderer();
+        surfaceBridge.setConsumer(new AndroidSurfaceBridge.Consumer() {
+            @Override
+            public void onSurfaceAvailable(android.view.Surface surface, int width, int height, long generation) {
+                rendererSession.onSurfaceAvailable(surface, width, height, generation);
+                eglRenderer.onSurfaceAvailable(surface, width, height, generation);
+            }
+
+            @Override
+            public void onSurfaceSizeChanged(android.view.Surface surface, int width, int height, long generation) {
+                rendererSession.onSurfaceSizeChanged(surface, width, height, generation);
+                eglRenderer.onSurfaceSizeChanged(surface, width, height, generation);
+            }
+
+            @Override
+            public void onSurfaceDestroyed(long generation) {
+                eglRenderer.onSurfaceDestroyed(generation);
+                rendererSession.onSurfaceDestroyed(generation);
+            }
+        });
         MinecraftSurfaceHost surfaceHost = gameplayLayer.getSurfaceView();
         surfaceHost.setListener(surfaceBridge);
     }
@@ -47,17 +68,20 @@ public final class MinecraftGameplayActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (gameplayLayer != null) gameplayLayer.refreshControls();
+        if (eglRenderer != null) eglRenderer.renderTestFrame();
     }
 
     @Override
     protected void onPause() {
         if (gameplayLayer != null) gameplayLayer.releaseInputs();
+        if (eglRenderer != null) eglRenderer.release();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
         if (gameplayLayer != null) gameplayLayer.releaseInputs();
+        if (eglRenderer != null) eglRenderer.release();
         if (rendererSession != null) rendererSession.reset();
         super.onDestroy();
     }
