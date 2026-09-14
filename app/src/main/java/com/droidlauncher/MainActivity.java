@@ -525,6 +525,7 @@ public final class MainActivity extends Activity {
         jvmArguments.add("-Xmx" + profile.getMaxRamMb() + "M");
         launchController.launch(runtime, gameDirectory, nativesDirectory, classpath,
                 mainClass, jvmArguments, gameArguments, Collections.emptyMap());
+        startActivity(new Intent(this, MinecraftGameplayActivity.class));
     }
 
     private void refreshInstallationStatus() {
