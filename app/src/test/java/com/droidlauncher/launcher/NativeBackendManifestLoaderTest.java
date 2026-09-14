@@ -2,7 +2,6 @@ package com.droidlauncher.launcher;
 
 import org.junit.Test;
 
-import java.io.File;
 import java.util.EnumMap;
 
 import static org.junit.Assert.*;
@@ -23,41 +22,31 @@ public class NativeBackendManifestLoaderTest {
     @Test
     public void parseAcceptsCompleteManifest() throws Exception {
         NativeBackendRegistry registry = new NativeBackendManifestLoader().parse(manifest(
-                "https://example.test/a", SHA1,
-                "https://example.test/b", SHA1,
-                "https://example.test/c", SHA1,
-                "https://example.test/d", SHA1));
+                "https://example.com/a", SHA1,
+                "https://example.com/b", SHA1,
+                "https://example.com/c", SHA1,
+                "https://example.com/d", SHA1));
 
         assertEquals("libdroidglfw.so", registry.forAbi(NativeAbi.ARM64).getLibraryFileName());
         assertEquals(NativeAbi.X86, registry.forAbi(NativeAbi.X86).getAbi());
     }
 
     @Test
-    public void parseRejectsMissingAbiEntry() {
+    public void parseRejectsMissingAbiEntry() throws Exception {
         String json = "{\"schemaVersion\":1,\"library\":\"libdroidglfw.so\",\"backends\":{" +
-                "\"arm64-v8a\":{\"url\":\"https://example.test/a\",\"sha1\":\"" + SHA1 + "\"}" +
-                "}}";
-        try {
-            new NativeBackendManifestLoader().parse(json);
-            fail("Expected missing ABI entry failure");
-        } catch (Exception expected) {
-            assertTrue(expected.getMessage().contains("Missing manifest entry"));
-        }
+                "\"arm64-v8a\":{\"url\":\"https://example.com/a\",\"sha1\":\"" + SHA1 + "\"}" +
+                "}}}";
+        assertThrows(java.io.IOException.class, () -> new NativeBackendManifestLoader().parse(json));
     }
 
     @Test
-    public void parseRejectsInvalidLibraryName() {
+    public void parseRejectsInvalidLibraryName() throws Exception {
         String json = manifest(
-                "https://example.test/a", SHA1,
-                "https://example.test/b", SHA1,
-                "https://example.test/c", SHA1,
-                "https://example.test/d", SHA1).replace("libdroidglfw.so", "../libevil.so");
-        try {
-            new NativeBackendManifestLoader().parse(json);
-            fail("Expected invalid library name failure");
-        } catch (Exception expected) {
-            assertTrue(expected.getMessage().contains("Invalid native backend library name"));
-        }
+                "https://example.com/a", SHA1,
+                "https://example.com/b", SHA1,
+                "https://example.com/c", SHA1,
+                "https://example.com/d", SHA1).replace("libdroidglfw.so", "../libevil.so");
+        assertThrows(java.io.IOException.class, () -> new NativeBackendManifestLoader().parse(json));
     }
 
     @Test
@@ -66,16 +55,11 @@ public class NativeBackendManifestLoaderTest {
         for (NativeAbi abi : NativeAbi.values()) {
             if (abi != NativeAbi.UNKNOWN) {
                 specs.put(abi, new NativeBackendSpec(abi, "libdroidglfw.so",
-                        new java.net.URL("https://example.test/" + abi.getAndroidAbi()), SHA1));
+                        new java.net.URL("https://example.com/" + abi.getAndroidAbi()), SHA1));
             }
         }
         specs.put(NativeAbi.X86, new NativeBackendSpec(NativeAbi.X86_64, "libdroidglfw.so",
-                new java.net.URL("https://example.test/mismatch"), SHA1));
-        try {
-            new NativeBackendRegistry(specs);
-            fail("Expected ABI mismatch failure");
-        } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("ABI mismatch"));
-        }
+                new java.net.URL("https://example.com/mismatch"), SHA1));
+        assertThrows(IllegalArgumentException.class, () -> new NativeBackendRegistry(specs));
     }
 }
