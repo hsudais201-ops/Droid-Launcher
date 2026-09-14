@@ -27,6 +27,15 @@ public final class GLFWRuntimeBridge {
     }
 
     /**
+     * Provisions and verifies an ABI-specific backend before loading it into the launch environment.
+     */
+    public File prepareBackend(NativeBackendLaunchGate gate, NativeBackendSpec spec) throws IOException {
+        if (gate == null) throw new IllegalArgumentException("gate is required");
+        if (spec == null) throw new IllegalArgumentException("spec is required");
+        return gate.prepare(spec);
+    }
+
+    /**
      * Validates the Android Surface before handing a prepared native GLFW library to the future
      * JNI/EGL integration. Loading alone does not claim that a GLFW window/context was created.
      */
