@@ -9,11 +9,13 @@ import android.view.MotionEvent;
 import android.view.View;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Lightweight gameplay overlay for the saved touch-control layout.
- * The listener is the seam for the future native/GLFW input bridge.
+ * Button events and analog movement are routed through the input bridge seam.
  */
 public final class TouchControlOverlayView extends View {
     public interface Listener {
@@ -22,7 +24,11 @@ public final class TouchControlOverlayView extends View {
     }
 
     private final TouchControlStore store;
+    private final TouchControlInputBridge inputBridge = new TouchControlInputBridge();
     private final List<TouchControlConfig> controls = new ArrayList<>();
+    private final Map<Integer, TouchControlAction> activeActions = new HashMap<>();
+    private final Map<Integer, Float> lastX = new HashMap<>();
+    private final Map<Integer, Float> lastY = new HashMap<>();
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -44,6 +50,19 @@ public final class TouchControlOverlayView extends View {
 
     public void setListener(Listener listener) {
         this.listener = listener;
+    }
+
+    /** Connects the overlay to a future native/GLFW game-input consumer. */
+    public void setInputSink(TouchControlInputBridge.Sink sink) {
+        inputBridge.setSink(sink);
+    }
+
+    /** Releases all currently pressed controls, useful when the game surface is paused. */
+    public void releaseAllInputs() {
+        activeActions.clear();
+        lastX.clear();
+        lastY.clear();
+        inputBridge.releaseAll();
     }
 
     public void refresh() {
@@ -78,26 +97,68 @@ public final class TouchControlOverlayView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (event.getActionMasked() != MotionEvent.ACTION_DOWN
-                && event.getActionMasked() != MotionEvent.ACTION_POINTER_DOWN
-                && event.getActionMasked() != MotionEvent.ACTION_UP
-                && event.getActionMasked() != MotionEvent.ACTION_POINTER_UP
-                && event.getActionMasked() != MotionEvent.ACTION_CANCEL) {
+        int masked = event.getActionMasked();
+        if (masked != MotionEvent.ACTION_DOWN
+                && masked != MotionEvent.ACTION_POINTER_DOWN
+                && masked != MotionEvent.ACTION_MOVE
+                && masked != MotionEvent.ACTION_UP
+                && masked != MotionEvent.ACTION_POINTER_UP
+                && masked != MotionEvent.ACTION_CANCEL) {
             return true;
         }
+
+        if (masked == MotionEvent.ACTION_MOVE) {
+            handleMoves(event);
+            return true;
+        }
+
         int pointerIndex = event.getActionIndex();
+        int pointerId = event.getPointerId(pointerIndex);
         float x = event.getX(pointerIndex);
         float y = event.getY(pointerIndex);
-        TouchControlConfig hit = hitTest(x, y);
-        if (hit == null || listener == null) return true;
-        int action = event.getActionMasked();
-        if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
-            listener.onControlDown(hit.action);
-        } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP
-                || action == MotionEvent.ACTION_CANCEL) {
-            listener.onControlUp(hit.action);
+
+        if (masked == MotionEvent.ACTION_CANCEL) {
+            releaseAllInputs();
+            return true;
+        }
+
+        if (masked == MotionEvent.ACTION_DOWN || masked == MotionEvent.ACTION_POINTER_DOWN) {
+            TouchControlConfig hit = hitTest(x, y);
+            if (hit == null) return true;
+            activeActions.put(pointerId, hit.action);
+            lastX.put(pointerId, x);
+            lastY.put(pointerId, y);
+            inputBridge.onControlDown(hit.action);
+            if (listener != null) listener.onControlDown(hit.action);
+            return true;
+        }
+
+        TouchControlAction action = activeActions.remove(pointerId);
+        lastX.remove(pointerId);
+        lastY.remove(pointerId);
+        if (action != null) {
+            inputBridge.onControlUp(action);
+            if (listener != null) listener.onControlUp(action);
         }
         return true;
+    }
+
+    private void handleMoves(MotionEvent event) {
+        for (int i = 0; i < event.getPointerCount(); i++) {
+            int pointerId = event.getPointerId(i);
+            TouchControlAction action = activeActions.get(pointerId);
+            if (action == null) continue;
+            float x = event.getX(i);
+            float y = event.getY(i);
+            Float previousX = lastX.put(pointerId, x);
+            Float previousY = lastY.put(pointerId, y);
+            if (previousX == null || previousY == null) continue;
+            if (action == TouchControlAction.CAMERA || action == TouchControlAction.JOYSTICK) {
+                float dx = (x - previousX) / Math.max(1f, getWidth()) * 4f;
+                float dy = (y - previousY) / Math.max(1f, getHeight()) * 4f;
+                inputBridge.onAnalogMove(action, dx, dy);
+            }
+        }
     }
 
     private TouchControlConfig hitTest(float x, float y) {
