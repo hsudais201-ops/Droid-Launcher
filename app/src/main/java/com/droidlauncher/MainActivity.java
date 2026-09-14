@@ -524,8 +524,17 @@ public final class MainActivity extends Activity {
         jvmArguments.add("-Xms" + profile.getMinRamMb() + "M");
         jvmArguments.add("-Xmx" + profile.getMaxRamMb() + "M");
         launchController.launch(runtime, gameDirectory, nativesDirectory, classpath,
-                mainClass, jvmArguments, gameArguments, Collections.emptyMap());
-        startActivity(new Intent(this, MinecraftGameplayActivity.class));
+                mainClass, jvmArguments, gameArguments, Collections.emptyMap(),
+                new LaunchUiController.LaunchCallback() {
+                    @Override public void onProcessStarted(Process process) {
+                        startActivity(new Intent(MainActivity.this, MinecraftGameplayActivity.class));
+                    }
+
+                    @Override public void onProcessExited(int exitCode) {
+                        launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.STOPPED,
+                                "Minecraft process exited with code " + exitCode));
+                    }
+                });
     }
 
     private void refreshInstallationStatus() {
