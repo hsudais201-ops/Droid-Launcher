@@ -8,12 +8,14 @@ import android.view.Window;
 import android.view.WindowManager;
 
 import com.droidlauncher.launcher.AndroidSurfaceBridge;
+import com.droidlauncher.launcher.MinecraftNativeRendererSession;
 import com.droidlauncher.launcher.MinecraftSurfaceHost;
 
 /** Hosts the Minecraft surface plus the configurable Android touch-control overlay. */
 public final class MinecraftGameplayActivity extends Activity {
     private MinecraftGameplayInputLayer gameplayLayer;
     private AndroidSurfaceBridge surfaceBridge;
+    private MinecraftNativeRendererSession rendererSession;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,21 +37,10 @@ public final class MinecraftGameplayActivity extends Activity {
         setContentView(gameplayLayer);
 
         surfaceBridge = new AndroidSurfaceBridge();
+        rendererSession = new MinecraftNativeRendererSession();
+        surfaceBridge.setConsumer(rendererSession);
         MinecraftSurfaceHost surfaceHost = gameplayLayer.getSurfaceView();
         surfaceHost.setListener(surfaceBridge);
-        surfaceBridge.setConsumer(new AndroidSurfaceBridge.Consumer() {
-            @Override public void onSurfaceAvailable(android.view.Surface surface, int width, int height, long generation) {
-                // Native EGL/GLFW/LWJGL renderer hookup belongs here.
-            }
-
-            @Override public void onSurfaceSizeChanged(android.view.Surface surface, int width, int height, long generation) {
-                // Forward resize to the native renderer when its Android integration is available.
-            }
-
-            @Override public void onSurfaceDestroyed(long generation) {
-                // Native renderer must release its surface/context here.
-            }
-        });
     }
 
     @Override
@@ -67,6 +58,7 @@ public final class MinecraftGameplayActivity extends Activity {
     @Override
     protected void onDestroy() {
         if (gameplayLayer != null) gameplayLayer.releaseInputs();
+        if (rendererSession != null) rendererSession.reset();
         super.onDestroy();
     }
 }
