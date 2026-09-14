@@ -2,10 +2,7 @@ package com.droidlauncher.launcher;
 
 import android.view.Surface;
 
-/**
- * Lifecycle boundary between Android's Surface and a future native Minecraft renderer.
- * It tracks the latest valid surface generation without claiming to create an EGL/GLFW context.
- */
+/** Lifecycle/session state shared by Android surface and the future Minecraft native renderer. */
 public final class MinecraftNativeRendererSession implements AndroidSurfaceBridge.Consumer {
     public enum State { DETACHED, READY, RESIZED, DESTROYED }
 
@@ -18,11 +15,7 @@ public final class MinecraftNativeRendererSession implements AndroidSurfaceBridg
     @Override
     public synchronized void onSurfaceAvailable(Surface surface, int width, int height, long generation) {
         if (surface == null || !surface.isValid()) {
-            this.surface = null;
-            this.width = 0;
-            this.height = 0;
-            this.generation = generation;
-            this.state = State.DETACHED;
+            clearLocked(generation, State.DETACHED);
             return;
         }
         this.surface = surface;
@@ -36,7 +29,7 @@ public final class MinecraftNativeRendererSession implements AndroidSurfaceBridg
     public synchronized void onSurfaceSizeChanged(Surface surface, int width, int height, long generation) {
         if (generation < this.generation) return;
         if (surface == null || !surface.isValid()) {
-            onSurfaceDestroyed(generation);
+            clearLocked(generation, State.DESTROYED);
             return;
         }
         this.surface = surface;
@@ -49,11 +42,7 @@ public final class MinecraftNativeRendererSession implements AndroidSurfaceBridg
     @Override
     public synchronized void onSurfaceDestroyed(long generation) {
         if (generation < this.generation) return;
-        this.surface = null;
-        this.width = 0;
-        this.height = 0;
-        this.generation = generation;
-        this.state = State.DESTROYED;
+        clearLocked(generation, State.DESTROYED);
     }
 
     public synchronized Surface getSurface() { return surface; }
@@ -64,10 +53,14 @@ public final class MinecraftNativeRendererSession implements AndroidSurfaceBridg
     public synchronized State getState() { return state; }
 
     public synchronized void reset() {
+        clearLocked(0L, State.DETACHED);
+    }
+
+    private void clearLocked(long generation, State state) {
         surface = null;
         width = 0;
         height = 0;
-        generation = 0L;
-        state = State.DETACHED;
+        this.generation = generation;
+        this.state = state;
     }
 }
