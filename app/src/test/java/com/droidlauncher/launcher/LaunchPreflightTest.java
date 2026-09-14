@@ -5,7 +5,8 @@ import org.junit.Test;
 
 import java.io.File;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 
 public class LaunchPreflightTest {
     private final LaunchPreflight preflight = new LaunchPreflight();
@@ -21,11 +22,23 @@ public class LaunchPreflightTest {
     @Test
     public void rejectsMissingGameDirectory() {
         File runtimeExecutable = new File(System.getProperty("java.home"), "bin/java");
-        JavaRuntime runtime = new JavaRuntime(runtimeExecutable, "test", 17, true);
+        JavaRuntime runtime = new JavaRuntime(runtimeExecutable, 17, "test");
         LaunchPreflight.Result result = preflight.validate(runtime,
                 new File("definitely-missing-game-directory"), new File("natives"), "classpath", "Main");
         assertFalse(result.isValid());
         assertTrue(result.getMessage().contains("Game directory"));
+    }
+
+    @Test
+    public void rejectsMissingNativesDirectory() {
+        File runtimeExecutable = new File(System.getProperty("java.home"), "bin/java");
+        JavaRuntime runtime = new JavaRuntime(runtimeExecutable, 17, "test");
+        File game = new File(System.getProperty("java.io.tmpdir"), "droid-preflight-game");
+        assertTrue(game.mkdirs() || game.isDirectory());
+        LaunchPreflight.Result result = preflight.validate(runtime,
+                game, new File("definitely-missing-natives-directory"), "classpath", "Main");
+        assertFalse(result.isValid());
+        assertTrue(result.getMessage().contains("Native directory"));
     }
 
     @Test
