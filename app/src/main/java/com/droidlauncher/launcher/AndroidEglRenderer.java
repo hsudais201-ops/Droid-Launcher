@@ -9,7 +9,7 @@ import android.opengl.GLES20;
 import android.view.Surface;
 
 /** Minimal Android EGL/OpenGL ES renderer boundary for the gameplay Surface. */
-public final class AndroidEglRenderer {
+public final class AndroidEglRenderer implements AndroidSurfaceBridge.Consumer {
     private EGLDisplay display = EGL14.EGL_NO_DISPLAY;
     private EGLContext context = EGL14.EGL_NO_CONTEXT;
     private EGLSurface eglSurface = EGL14.EGL_NO_SURFACE;
@@ -18,7 +18,12 @@ public final class AndroidEglRenderer {
     private int width;
     private int height;
 
-    public synchronized boolean onSurfaceAvailable(Surface surface, int width, int height, long generation) {
+    @Override
+    public synchronized void onSurfaceAvailable(Surface surface, int width, int height, long generation) {
+        onSurfaceAvailableInternal(surface, width, height, generation);
+    }
+
+    public synchronized boolean onSurfaceAvailableInternal(Surface surface, int width, int height, long generation) {
         if (surface == null || !surface.isValid()) return false;
         releaseLocked();
         try {
@@ -52,28 +57,35 @@ public final class AndroidEglRenderer {
             this.width = Math.max(1, width);
             this.height = Math.max(1, height);
             this.generation = generation;
-            return renderFrameLocked();
+            renderFrameLocked();
+            return isReadyLocked();
         } catch (RuntimeException error) {
             releaseLocked();
             return false;
         }
     }
 
-    public synchronized boolean onSurfaceSizeChanged(Surface surface, int width, int height, long generation) {
-        if (generation < this.generation) return false;
+    @Override
+    public synchronized void onSurfaceSizeChanged(Surface surface, int width, int height, long generation) {
+        if (generation < this.generation) return;
         if (surface == null || !surface.isValid()) {
             onSurfaceDestroyed(generation);
-            return false;
+            return;
         }
         this.surface = surface;
         this.width = Math.max(1, width);
         this.height = Math.max(1, height);
         this.generation = generation;
-        if (!isReadyLocked()) return onSurfaceAvailable(surface, width, height, generation);
-        if (!EGL14.eglMakeCurrent(display, eglSurface, eglSurface, context)) return false;
-        return renderFrameLocked();
+        if (!isReadyLocked()) {
+            onSurfaceAvailableInternal(surface, width, height, generation);
+            return;
+        }
+        if (EGL14.eglMakeCurrent(display, eglSurface, eglSurface, context)) {
+            renderFrameLocked();
+        }
     }
 
+    @Override
     public synchronized void onSurfaceDestroyed(long generation) {
         if (generation < this.generation) return;
         releaseLocked();
