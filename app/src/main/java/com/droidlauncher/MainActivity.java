@@ -40,6 +40,7 @@ import com.droidlauncher.launcher.MicrosoftAuthConfig;
 import com.droidlauncher.launcher.MicrosoftDeviceCode;
 import com.droidlauncher.launcher.MicrosoftSignInCoordinator;
 import com.droidlauncher.launcher.NativeAbi;
+import com.droidlauncher.launcher.NativeBackendRuntime;
 import com.droidlauncher.launcher.ProfileStore;
 import com.droidlauncher.launcher.ProfileValidator;
 import com.droidlauncher.launcher.SecureTokenStore;
@@ -512,6 +513,20 @@ public final class MainActivity extends Activity {
             launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED, "No usable Java runtime found"));
             return;
         }
+
+        launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.PREPARING,
+                "Preparing Android native backend..."));
+        File backendRoot = new File(getFilesDir(), "native-backends");
+        File backendLibrary;
+        try {
+            backendLibrary = new NativeBackendRuntime().prepare(this, backendRoot);
+        } catch (Exception e) {
+            String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+            launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED,
+                    "Native backend preparation failed: " + message));
+            return;
+        }
+
         String mainClass = plan.getMetadata().getMainClass().isEmpty()
                 ? "net.minecraft.client.main.Main" : plan.getMetadata().getMainClass();
         AuthenticatedProfile authenticated = session.getProfile();
@@ -520,7 +535,8 @@ public final class MainActivity extends Activity {
                 authenticated.getUuid(), session.getMinecraftAccessToken(), gameDirectory,
                 new File(gameDirectory, "assets"), plan.getMetadata().getAssetsIndexId());
         ArrayList<String> jvmArguments = new ArrayList<>();
-        jvmArguments.add("-Djava.library.path=" + nativesDirectory.getAbsolutePath());
+        jvmArguments.add("-Djava.library.path=" + nativesDirectory.getAbsolutePath()
+                + File.pathSeparator + backendLibrary.getParentFile().getAbsolutePath());
         jvmArguments.add("-Xms" + profile.getMinRamMb() + "M");
         jvmArguments.add("-Xmx" + profile.getMaxRamMb() + "M");
         launchController.launch(runtime, gameDirectory, nativesDirectory, classpath,
