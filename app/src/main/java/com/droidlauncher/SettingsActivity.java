@@ -57,6 +57,8 @@ public final class SettingsActivity extends Activity {
                 startActivity(new Intent(this, CustomizeControlsActivity.class)));
         addSettingButton(panel, "CONTROL PROFILES", "Survival, PvP, Building and custom layouts", v ->
                 startActivity(new Intent(this, TouchControlProfilesActivity.class)));
+        addSettingButton(panel, "NATIVE BACKEND", "ABI, checksum and Android renderer backend", v ->
+                startActivity(new Intent(this, NativeBackendActivity.class)));
         addSettingButton(panel, "MEMORY & PERFORMANCE", "Runtime and device tuning", v ->
                 showInfo("Performance settings are wired for the next optimization step."));
         addSettingButton(panel, "ACCOUNT", "Microsoft / Minecraft account", v ->
