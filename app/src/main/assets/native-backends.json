@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "library": "libdroidglfw.so",
+  "backends": {
+    "arm64-v8a": { "url": "https://invalid.droidlauncher.invalid/native/arm64-v8a/libdroidglfw.so", "sha1": "0000000000000000000000000000000000000000" },
+    "armeabi-v7a": { "url": "https://invalid.droidlauncher.invalid/native/armeabi-v7a/libdroidglfw.so", "sha1": "0000000000000000000000000000000000000000" },
+    "x86_64": { "url": "https://invalid.droidlauncher.invalid/native/x86_64/libdroidglfw.so", "sha1": "0000000000000000000000000000000000000000" },
+    "x86": { "url": "https://invalid.droidlauncher.invalid/native/x86/libdroidglfw.so", "sha1": "0000000000000000000000000000000000000000" }
+  }
+}
