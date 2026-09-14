@@ -1,9 +1,18 @@
 package com.droidlauncher.launcher;
 
+import android.view.Surface;
+
 import java.io.File;
 import java.io.IOException;
 
-/** Entry point for future Android-compatible GLFW/LWJGL initialization. */
+/**
+ * Boundary for an Android-native GLFW/LWJGL runtime.
+ *
+ * The bridge validates the Android target and native library path before loading the library.
+ * It deliberately does not convert a desktop GLFW binary into an Android renderer or fabricate
+ * a GLFW window from an Android Surface; the loaded Android-native backend must provide that JNI
+ * integration itself.
+ */
 public final class GLFWRuntimeBridge {
     private final NativeLibraryLoader loader = new NativeLibraryLoader();
 
@@ -17,11 +26,30 @@ public final class GLFWRuntimeBridge {
         loader.load(environment.getNativeDirectory(), glfwLibraryFileName);
     }
 
-    private void ensureAndroidCompatibleTarget(NativeAbi abi) throws IOException {
-        if (abi == NativeAbi.UNKNOWN) {
-            throw new IOException("Cannot initialize GLFW with an unknown Android ABI");
+    /**
+     * Validates the Android Surface before handing a prepared native GLFW library to the future
+     * JNI/EGL integration. Loading alone does not claim that a GLFW window/context was created.
+     */
+    public void initializeAndroidSurface(Surface surface,
+                                         NativeLaunchEnvironment environment,
+                                         String glfwLibraryFileName) throws IOException {
+        if (surface == null || !surface.isValid()) {
+            throw new IOException("Android rendering Surface is unavailable");
         }
-        // CPU ABI validation is necessary but not sufficient. The native binary itself
-        // must be built for Android; this bridge intentionally does not translate desktop binaries.
+        initialize(environment, glfwLibraryFileName);
+    }
+
+    public NativeAbi requireSupportedAbi() throws IOException {
+        NativeAbi abi = NativeAbi.detect();
+        ensureAndroidCompatibleTarget(abi);
+        return abi;
+    }
+
+    private void ensureAndroidCompatibleTarget(NativeAbi abi) throws IOException {
+        if (abi == null || abi == NativeAbi.UNKNOWN) {
+            throw new IOException("Cannot initialize Android-native GLFW with an unknown ABI");
+        }
+        // ABI validation is necessary but not sufficient. The library itself must be compiled
+        // for Android and must expose the JNI/EGL integration expected by the native backend.
     }
 }
