@@ -8,6 +8,7 @@ import android.view.Window;
 import android.view.WindowManager;
 
 import com.droidlauncher.launcher.AndroidSurfaceBridge;
+import com.droidlauncher.launcher.MinecraftSurfaceHost;
 
 /** Hosts the Minecraft surface plus the configurable Android touch-control overlay. */
 public final class MinecraftGameplayActivity extends Activity {
@@ -33,18 +34,20 @@ public final class MinecraftGameplayActivity extends Activity {
                         | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
         setContentView(gameplayLayer);
 
-        surfaceBridge = new AndroidSurfaceBridge(gameplayLayer.getSurfaceView());
-        surfaceBridge.setListener(new AndroidSurfaceBridge.Listener() {
-            @Override public void onSurfaceAvailable(android.view.Surface surface, int width, int height) {
-                // Native renderer hookup belongs here once the Android-native GLFW/LWJGL runtime exists.
+        surfaceBridge = new AndroidSurfaceBridge();
+        MinecraftSurfaceHost surfaceHost = gameplayLayer.getSurfaceView();
+        surfaceHost.setListener(surfaceBridge);
+        surfaceBridge.setConsumer(new AndroidSurfaceBridge.Consumer() {
+            @Override public void onSurfaceAvailable(android.view.Surface surface, int width, int height, long generation) {
+                // Native EGL/GLFW/LWJGL renderer hookup belongs here.
             }
 
-            @Override public void onSurfaceSizeChanged(android.view.Surface surface, int width, int height) {
-                // Forward size changes to the native renderer when implemented.
+            @Override public void onSurfaceSizeChanged(android.view.Surface surface, int width, int height, long generation) {
+                // Forward resize to the native renderer when its Android integration is available.
             }
 
-            @Override public void onSurfaceDestroyed() {
-                // Native renderer must release its surface reference here.
+            @Override public void onSurfaceDestroyed(long generation) {
+                // Native renderer must release its surface/context here.
             }
         });
     }
@@ -53,19 +56,16 @@ public final class MinecraftGameplayActivity extends Activity {
     protected void onResume() {
         super.onResume();
         if (gameplayLayer != null) gameplayLayer.refreshControls();
-        if (surfaceBridge != null) surfaceBridge.attach();
     }
 
     @Override
     protected void onPause() {
-        if (surfaceBridge != null) surfaceBridge.detach();
         if (gameplayLayer != null) gameplayLayer.releaseInputs();
         super.onPause();
     }
 
     @Override
     protected void onDestroy() {
-        if (surfaceBridge != null) surfaceBridge.detach();
         if (gameplayLayer != null) gameplayLayer.releaseInputs();
         super.onDestroy();
     }
