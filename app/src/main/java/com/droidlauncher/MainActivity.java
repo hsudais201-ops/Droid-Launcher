@@ -7,9 +7,14 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.View;
+import android.view.animation.AlphaAnimation;
+import android.view.animation.Animation;
+import android.view.animation.ScaleAnimation;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -87,7 +92,7 @@ public final class MainActivity extends Activity {
         root.setOrientation(LinearLayout.VERTICAL);
         root.setGravity(Gravity.CENTER);
         root.setPadding(48, 28, 48, 28);
-        root.setBackgroundColor(Color.rgb(10, 12, 18));
+        root.setBackgroundColor(Color.TRANSPARENT);
 
         TextView title = new TextView(this);
         title.setText("DROID LAUNCHER");
@@ -95,72 +100,73 @@ public final class MainActivity extends Activity {
         title.setTextSize(30);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         title.setGravity(Gravity.CENTER);
+        title.setShadowLayer(8f, 0f, 2f, Color.BLACK);
         root.addView(title, new LinearLayout.LayoutParams(-1, -2));
 
         TextView subtitle = new TextView(this);
-        subtitle.setText("Minecraft Java • Microsoft Sign-In");
-        subtitle.setTextColor(Color.LTGRAY);
-        subtitle.setTextSize(15);
+        subtitle.setText("MINECRAFT JAVA  •  ANDROID");
+        subtitle.setTextColor(Color.rgb(225, 232, 240));
+        subtitle.setTextSize(14);
         subtitle.setGravity(Gravity.CENTER);
+        subtitle.setShadowLayer(5f, 0f, 1f, Color.BLACK);
         LinearLayout.LayoutParams subtitleParams = new LinearLayout.LayoutParams(-1, -2);
-        subtitleParams.topMargin = 10;
+        subtitleParams.topMargin = 8;
         root.addView(subtitle, subtitleParams);
 
-        profileStatus = new TextView(this);
-        profileStatus.setTextColor(Color.LTGRAY);
-        profileStatus.setTextSize(14);
-        profileStatus.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, -2);
-        statusParams.topMargin = 18;
-        root.addView(profileStatus, statusParams);
+        LinearLayout profilePanel = createPanel();
+        profileStatus = createStatusText();
+        profilePanel.addView(profileStatus, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams profilePanelParams = new LinearLayout.LayoutParams(560, -2);
+        profilePanelParams.topMargin = 18;
+        root.addView(profilePanel, profilePanelParams);
 
-        accountStatus = new TextView(this);
-        accountStatus.setTextColor(Color.rgb(190, 200, 215));
+        accountStatus = createStatusText();
         accountStatus.setTextSize(13);
-        accountStatus.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams accountParams = new LinearLayout.LayoutParams(-1, -2);
-        accountParams.topMargin = 10;
-        root.addView(accountStatus, accountParams);
+        accountStatus.setTextColor(Color.rgb(214, 224, 235));
+
+        LinearLayout accountPanel = createPanel();
+        accountPanel.addView(accountStatus, new LinearLayout.LayoutParams(-1, -2));
 
         LinearLayout accountActions = new LinearLayout(this);
         accountActions.setGravity(Gravity.CENTER);
         signInButton = new Button(this);
         signInButton.setText("SIGN IN WITH MICROSOFT");
+        styleButton(signInButton, Color.argb(170, 25, 38, 52), Color.argb(220, 190, 215, 240));
         signInButton.setOnClickListener(v -> startMicrosoftSignIn());
         accountActions.addView(signInButton, new LinearLayout.LayoutParams(300, 64));
         Button signOutButton = new Button(this);
         signOutButton.setText("SIGN OUT");
+        styleButton(signOutButton, Color.argb(150, 25, 25, 30), Color.argb(160, 180, 190, 205));
         signOutButton.setOnClickListener(v -> signOutMicrosoft());
         LinearLayout.LayoutParams signOutParams = new LinearLayout.LayoutParams(180, 64);
         signOutParams.leftMargin = 12;
         accountActions.addView(signOutButton, signOutParams);
         LinearLayout.LayoutParams accountActionsParams = new LinearLayout.LayoutParams(-2, -2);
         accountActionsParams.topMargin = 10;
-        root.addView(accountActions, accountActionsParams);
+        accountPanel.addView(accountActions, accountActionsParams);
+        LinearLayout.LayoutParams accountPanelParams = new LinearLayout.LayoutParams(560, -2);
+        accountPanelParams.topMargin = 10;
+        root.addView(accountPanel, accountPanelParams);
 
-        installationStatus = new TextView(this);
-        installationStatus.setTextColor(Color.rgb(190, 200, 215));
-        installationStatus.setTextSize(13);
-        installationStatus.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams installParams = new LinearLayout.LayoutParams(-1, -2);
-        installParams.topMargin = 10;
-        root.addView(installationStatus, installParams);
+        installationStatus = createStatusText();
+        installationStatus.setTextSize(12);
+        LinearLayout installPanel = createPanel();
+        installPanel.addView(installationStatus, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams installPanelParams = new LinearLayout.LayoutParams(560, -2);
+        installPanelParams.topMargin = 10;
+        root.addView(installPanel, installPanelParams);
 
-        launchStatus = new TextView(this);
-        launchStatus.setTextColor(Color.WHITE);
+        launchStatus = createStatusText();
         launchStatus.setTextSize(15);
-        launchStatus.setGravity(Gravity.CENTER);
-        LinearLayout.LayoutParams launchStatusParams = new LinearLayout.LayoutParams(-1, -2);
-        launchStatusParams.topMargin = 14;
-        root.addView(launchStatus, launchStatusParams);
-
-        launchDetail = new TextView(this);
-        launchDetail.setTextColor(Color.LTGRAY);
+        launchStatus.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        launchDetail = createStatusText();
         launchDetail.setTextSize(12);
-        launchDetail.setGravity(Gravity.CENTER);
+
+        LinearLayout launchPanel = createPanel();
+        launchPanel.addView(launchStatus, new LinearLayout.LayoutParams(-1, -2));
         LinearLayout.LayoutParams detailParams = new LinearLayout.LayoutParams(-1, -2);
-        detailParams.topMargin = 6;
-        root.addView(launchDetail, detailParams);
+        detailParams.topMargin = 4;
+        launchPanel.addView(launchDetail, detailParams);
 
         launchController = new LaunchUiController(launchStatus, launchDetail);
         launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.IDLE, "Launcher ready"));
@@ -169,25 +175,91 @@ public final class MainActivity extends Activity {
         actions.setGravity(Gravity.CENTER);
         playButton = new Button(this);
         playButton.setText("PLAY");
-        playButton.setTextSize(18);
+        playButton.setTextSize(20);
+        playButton.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        styleButton(playButton, Color.argb(215, 45, 95, 42), Color.argb(240, 215, 245, 215));
         playButton.setOnClickListener(v -> startMinecraft());
-        LinearLayout.LayoutParams playParams = new LinearLayout.LayoutParams(320, 76);
+        LinearLayout.LayoutParams playParams = new LinearLayout.LayoutParams(320, 82);
         actions.addView(playButton, playParams);
         Button stopButton = new Button(this);
         stopButton.setText("STOP");
+        styleButton(stopButton, Color.argb(150, 48, 32, 34), Color.argb(180, 240, 205, 210));
         stopButton.setOnClickListener(v -> launchController.stop());
         LinearLayout.LayoutParams stopParams = new LinearLayout.LayoutParams(180, 76);
         stopParams.leftMargin = 12;
         actions.addView(stopButton, stopParams);
         LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(-2, -2);
-        actionsParams.topMargin = 14;
-        root.addView(actions, actionsParams);
+        actionsParams.topMargin = 10;
+        launchPanel.addView(actions, actionsParams);
+
+        LinearLayout.LayoutParams launchPanelParams = new LinearLayout.LayoutParams(560, -2);
+        launchPanelParams.topMargin = 10;
+        root.addView(launchPanel, launchPanelParams);
 
         setContentView(root);
+        startPlayPulse();
         refreshProfileStatus();
         refreshInstallationStatus();
         refreshAccountStatus();
         restoreSavedMinecraftSession();
+    }
+
+    private LinearLayout createPanel() {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setGravity(Gravity.CENTER);
+        panel.setPadding(22, 14, 22, 14);
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(Color.argb(135, 8, 12, 18));
+        background.setCornerRadius(24f);
+        background.setStroke(1, Color.argb(95, 255, 255, 255));
+        panel.setBackground(background);
+        return panel;
+    }
+
+    private TextView createStatusText() {
+        TextView text = new TextView(this);
+        text.setTextColor(Color.WHITE);
+        text.setTextSize(14);
+        text.setGravity(Gravity.CENTER);
+        text.setShadowLayer(5f, 0f, 1f, Color.BLACK);
+        return text;
+    }
+
+    private void styleButton(Button button, int fillColor, int strokeColor) {
+        GradientDrawable background = new GradientDrawable();
+        background.setColor(fillColor);
+        background.setCornerRadius(22f);
+        background.setStroke(2, strokeColor);
+        button.setTextColor(Color.WHITE);
+        button.setAllCaps(false);
+        button.setBackground(background);
+        button.setStateListAnimator(null);
+    }
+
+    private void startPlayPulse() {
+        if (playButton == null) return;
+        ScaleAnimation pulse = new ScaleAnimation(
+                1.0f, 1.035f, 1.0f, 1.035f,
+                Animation.RELATIVE_TO_SELF, 0.5f,
+                Animation.RELATIVE_TO_SELF, 0.5f);
+        pulse.setDuration(1100L);
+        pulse.setRepeatMode(Animation.REVERSE);
+        pulse.setRepeatCount(Animation.INFINITE);
+        playButton.startAnimation(pulse);
+    }
+
+    private void stopPlayPulse() {
+        if (playButton != null) playButton.clearAnimation();
+    }
+
+    private void showLaunchFeedback() {
+        if (playButton == null) return;
+        AlphaAnimation fade = new AlphaAnimation(1f, 0.75f);
+        fade.setDuration(180L);
+        fade.setRepeatMode(Animation.REVERSE);
+        fade.setRepeatCount(3);
+        playButton.startAnimation(fade);
     }
 
     private void restoreSavedMinecraftSession() {
@@ -362,7 +434,9 @@ public final class MainActivity extends Activity {
             launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.FAILED, result.getMessage()));
             return;
         }
+        stopPlayPulse();
         playButton.setEnabled(false);
+        showLaunchFeedback();
         launchController.onLaunchUpdate(LaunchObservation.state(LaunchState.PREPARING,
                 "Installing and preparing Minecraft..."));
         new Thread(() -> {
@@ -393,7 +467,10 @@ public final class MainActivity extends Activity {
                 postInstallationStatus("Preparation failed: " + message, true);
             } finally {
                 installing.set(false);
-                runOnUiThread(() -> playButton.setEnabled(true));
+                runOnUiThread(() -> {
+                    playButton.setEnabled(true);
+                    startPlayPulse();
+                });
             }
         }, "droid-install-and-launch").start();
     }
