@@ -27,11 +27,14 @@ public final class TouchControlOverlayView extends View {
     private final TouchControlInputBridge inputBridge = new TouchControlInputBridge();
     private final List<TouchControlConfig> controls = new ArrayList<>();
     private final Map<Integer, TouchControlAction> activeActions = new HashMap<>();
+    private final Map<Integer, TouchControlConfig> activeControls = new HashMap<>();
     private final Map<Integer, Float> lastX = new HashMap<>();
     private final Map<Integer, Float> lastY = new HashMap<>();
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint analogFill = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint analogStroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private Listener listener;
 
     public TouchControlOverlayView(Context context) {
@@ -45,6 +48,10 @@ public final class TouchControlOverlayView extends View {
         text.setColor(Color.WHITE);
         text.setTextAlign(Paint.Align.CENTER);
         text.setTextSize(28f);
+        analogFill.setColor(Color.argb(90, 220, 235, 250));
+        analogStroke.setStyle(Paint.Style.STROKE);
+        analogStroke.setStrokeWidth(2f);
+        analogStroke.setColor(Color.argb(220, 230, 245, 255));
         refresh();
     }
 
@@ -60,9 +67,11 @@ public final class TouchControlOverlayView extends View {
     /** Releases all currently pressed controls, useful when the game surface is paused. */
     public void releaseAllInputs() {
         activeActions.clear();
+        activeControls.clear();
         lastX.clear();
         lastY.clear();
         inputBridge.releaseAll();
+        invalidate();
     }
 
     public void refresh() {
@@ -78,21 +87,51 @@ public final class TouchControlOverlayView extends View {
         float h = getHeight();
         for (TouchControlConfig config : controls) {
             if (!config.visible) continue;
-            float left = clamp(config.x * w, 0f, Math.max(0f, w - config.width * w));
-            float top = clamp(config.y * h, 0f, Math.max(0f, h - config.height * h));
-            float right = Math.min(w, left + Math.max(54f, config.width * w));
-            float bottom = Math.min(h, top + Math.max(44f, config.height * h));
-            fill.setAlpha(Math.round(255f * clamp(config.opacity, 0.15f, 1f) * 0.55f));
-            stroke.setAlpha(Math.round(255f * clamp(config.opacity, 0.15f, 1f)));
-            RectF rect = new RectF(left, top, right, bottom);
+            RectF rect = bounds(config, w, h);
+            float alpha = clamp(config.opacity, 0.15f, 1f);
+            fill.setAlpha(Math.round(255f * alpha * 0.55f));
+            stroke.setAlpha(Math.round(255f * alpha));
             float radius = "circle".equals(config.shape) ? Math.min(rect.width(), rect.height()) / 2f
                     : ("rounded".equals(config.shape) ? 20f : 4f);
             canvas.drawRoundRect(rect, radius, radius, fill);
             canvas.drawRoundRect(rect, radius, radius, stroke);
-            float baseline = top + rect.height() / 2f - (text.ascent() + text.descent()) / 2f;
+            if (config.action == TouchControlAction.JOYSTICK) {
+                drawJoystick(canvas, config, rect, activePointerFor(config));
+                continue;
+            }
+            float baseline = rect.centerY() - (text.ascent() + text.descent()) / 2f;
             text.setTextSize(Math.max(12f, Math.min(28f, rect.height() * 0.28f)));
-            canvas.drawText(config.label, left + rect.width() / 2f, baseline, text);
+            canvas.drawText(config.label, rect.centerX(), baseline, text);
+            if (config.action == TouchControlAction.CAMERA) {
+                canvas.drawCircle(rect.centerX(), rect.centerY(), Math.min(rect.width(), rect.height()) * 0.08f, analogStroke);
+            }
         }
+    }
+
+    private void drawJoystick(Canvas canvas, TouchControlConfig config, RectF rect, Integer pointerId) {
+        float cx = rect.centerX();
+        float cy = rect.centerY();
+        float outer = Math.min(rect.width(), rect.height()) * 0.44f;
+        canvas.drawCircle(cx, cy, outer, analogStroke);
+        float knobX = cx;
+        float knobY = cy;
+        if (pointerId != null && lastX.containsKey(pointerId) && lastY.containsKey(pointerId)) {
+            float radius = outer * 0.68f;
+            float dx = lastX.get(pointerId) - cx;
+            float dy = lastY.get(pointerId) - cy;
+            float distance = (float) Math.sqrt(dx * dx + dy * dy);
+            if (distance > radius && distance > 0f) {
+                float scale = radius / distance;
+                dx *= scale;
+                dy *= scale;
+            }
+            knobX += dx;
+            knobY += dy;
+        }
+        canvas.drawCircle(knobX, knobY, Math.max(12f, outer * 0.34f), analogFill);
+        text.setTextSize(Math.max(12f, Math.min(24f, rect.height() * 0.2f)));
+        float baseline = rect.centerY() - (text.ascent() + text.descent()) / 2f;
+        canvas.drawText(config.label, rect.centerX(), baseline, text);
     }
 
     @Override
@@ -103,12 +142,15 @@ public final class TouchControlOverlayView extends View {
                 && masked != MotionEvent.ACTION_MOVE
                 && masked != MotionEvent.ACTION_UP
                 && masked != MotionEvent.ACTION_POINTER_UP
-                && masked != MotionEvent.ACTION_CANCEL) {
-            return true;
-        }
+                && masked != MotionEvent.ACTION_CANCEL) return true;
 
         if (masked == MotionEvent.ACTION_MOVE) {
             handleMoves(event);
+            return true;
+        }
+
+        if (masked == MotionEvent.ACTION_CANCEL) {
+            releaseAllInputs();
             return true;
         }
 
@@ -117,29 +159,30 @@ public final class TouchControlOverlayView extends View {
         float x = event.getX(pointerIndex);
         float y = event.getY(pointerIndex);
 
-        if (masked == MotionEvent.ACTION_CANCEL) {
-            releaseAllInputs();
-            return true;
-        }
-
         if (masked == MotionEvent.ACTION_DOWN || masked == MotionEvent.ACTION_POINTER_DOWN) {
             TouchControlConfig hit = hitTest(x, y);
             if (hit == null) return true;
             activeActions.put(pointerId, hit.action);
+            activeControls.put(pointerId, hit);
             lastX.put(pointerId, x);
             lastY.put(pointerId, y);
             inputBridge.onControlDown(hit.action);
             if (listener != null) listener.onControlDown(hit.action);
+            if (hit.action == TouchControlAction.JOYSTICK) emitJoystick(hit, pointerId, x, y);
+            invalidate();
             return true;
         }
 
         TouchControlAction action = activeActions.remove(pointerId);
+        TouchControlConfig config = activeControls.remove(pointerId);
         lastX.remove(pointerId);
         lastY.remove(pointerId);
         if (action != null) {
+            if (action == TouchControlAction.JOYSTICK) inputBridge.onAnalogMove(action, 0f, 0f);
             inputBridge.onControlUp(action);
             if (listener != null) listener.onControlUp(action);
         }
+        invalidate();
         return true;
     }
 
@@ -147,18 +190,42 @@ public final class TouchControlOverlayView extends View {
         for (int i = 0; i < event.getPointerCount(); i++) {
             int pointerId = event.getPointerId(i);
             TouchControlAction action = activeActions.get(pointerId);
-            if (action == null) continue;
+            TouchControlConfig config = activeControls.get(pointerId);
+            if (action == null || config == null) continue;
             float x = event.getX(i);
             float y = event.getY(i);
-            Float previousX = lastX.put(pointerId, x);
-            Float previousY = lastY.put(pointerId, y);
-            if (previousX == null || previousY == null) continue;
-            if (action == TouchControlAction.CAMERA || action == TouchControlAction.JOYSTICK) {
-                float dx = (x - previousX) / Math.max(1f, getWidth()) * 4f;
-                float dy = (y - previousY) / Math.max(1f, getHeight()) * 4f;
+            lastX.put(pointerId, x);
+            lastY.put(pointerId, y);
+            if (action == TouchControlAction.JOYSTICK) {
+                emitJoystick(config, pointerId, x, y);
+            } else if (action == TouchControlAction.CAMERA) {
+                float dx = (x - previous(lastX, pointerId, x)) / Math.max(1f, getWidth()) * 6f;
+                float dy = (y - previous(lastY, pointerId, y)) / Math.max(1f, getHeight()) * 6f;
                 inputBridge.onAnalogMove(action, dx, dy);
             }
         }
+        invalidate();
+    }
+
+    private float previous(Map<Integer, Float> values, int pointerId, float current) {
+        Float value = values.get(pointerId);
+        return value == null ? current : value;
+    }
+
+    private void emitJoystick(TouchControlConfig config, int pointerId, float x, float y) {
+        RectF rect = bounds(config, getWidth(), getHeight());
+        float radius = Math.min(rect.width(), rect.height()) * 0.34f;
+        float dx = x - rect.centerX();
+        float dy = y - rect.centerY();
+        float distance = (float) Math.sqrt(dx * dx + dy * dy);
+        if (distance > radius && distance > 0f) {
+            float scale = radius / distance;
+            dx *= scale;
+            dy *= scale;
+        }
+        inputBridge.onAnalogMove(TouchControlAction.JOYSTICK,
+                clamp(dx / Math.max(1f, radius), -1f, 1f),
+                clamp(dy / Math.max(1f, radius), -1f, 1f));
     }
 
     private TouchControlConfig hitTest(float x, float y) {
@@ -167,11 +234,23 @@ public final class TouchControlOverlayView extends View {
         for (int i = controls.size() - 1; i >= 0; i--) {
             TouchControlConfig config = controls.get(i);
             if (!config.visible) continue;
-            float left = clamp(config.x * w, 0f, Math.max(0f, w - config.width * w));
-            float top = clamp(config.y * h, 0f, Math.max(0f, h - config.height * h));
-            float right = Math.min(w, left + Math.max(54f, config.width * w));
-            float bottom = Math.min(h, top + Math.max(44f, config.height * h));
-            if (x >= left && x <= right && y >= top && y <= bottom) return config;
+            RectF rect = bounds(config, w, h);
+            if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) return config;
+        }
+        return null;
+    }
+
+    private RectF bounds(TouchControlConfig config, float w, float h) {
+        float cw = Math.max(54f, config.width * w);
+        float ch = Math.max(44f, config.height * h);
+        float left = clamp(config.x * w, 0f, Math.max(0f, w - cw));
+        float top = clamp(config.y * h, 0f, Math.max(0f, h - ch));
+        return new RectF(left, top, Math.min(w, left + cw), Math.min(h, top + ch));
+    }
+
+    private Integer activePointerFor(TouchControlConfig config) {
+        for (Map.Entry<Integer, TouchControlConfig> entry : activeControls.entrySet()) {
+            if (entry.getValue() == config) return entry.getKey();
         }
         return null;
     }
