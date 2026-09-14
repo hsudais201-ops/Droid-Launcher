@@ -188,6 +188,14 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams stopParams = new LinearLayout.LayoutParams(180, 76);
         stopParams.leftMargin = 12;
         actions.addView(stopButton, stopParams);
+        Button settingsButton = new Button(this);
+        settingsButton.setText("SETTINGS");
+        settingsButton.setTextSize(13);
+        styleButton(settingsButton, Color.argb(145, 30, 38, 50), Color.argb(170, 195, 215, 235));
+        settingsButton.setOnClickListener(v -> startActivity(new Intent(this, SettingsActivity.class)));
+        LinearLayout.LayoutParams settingsParams = new LinearLayout.LayoutParams(180, 76);
+        settingsParams.leftMargin = 12;
+        actions.addView(settingsButton, settingsParams);
         LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(-2, -2);
         actionsParams.topMargin = 10;
         launchPanel.addView(actions, actionsParams);
