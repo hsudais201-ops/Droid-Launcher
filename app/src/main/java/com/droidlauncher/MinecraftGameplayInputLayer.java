@@ -3,18 +3,18 @@ package com.droidlauncher;
 import android.content.Context;
 import android.graphics.Color;
 import android.view.Gravity;
-import android.view.SurfaceView;
 import android.widget.FrameLayout;
 
+import com.droidlauncher.launcher.MinecraftSurfaceHost;
+
 /**
- * Reusable gameplay container that stacks a rendering surface with the saved touch overlay.
- * The rendering surface remains independent of the input layer so a future native/GLFW
- * renderer can consume the same surface without changing touch-control code.
+ * Reusable gameplay container that stacks the Android surface host with the saved touch overlay.
+ * The surface lifecycle can be consumed by the future native EGL/GLFW/LWJGL renderer.
  */
 public final class MinecraftGameplayInputLayer extends FrameLayout {
     public interface Listener extends TouchControlOverlayView.Listener { }
 
-    private final SurfaceView surfaceView;
+    private final MinecraftSurfaceHost surfaceView;
     private final TouchControlOverlayView overlayView;
     private final TouchControlInputBridge inputBridge;
 
@@ -24,7 +24,7 @@ public final class MinecraftGameplayInputLayer extends FrameLayout {
         setFocusable(true);
         setFocusableInTouchMode(true);
 
-        surfaceView = new SurfaceView(context);
+        surfaceView = new MinecraftSurfaceHost(context);
         LayoutParams surfaceParams = new LayoutParams(
                 LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT, Gravity.CENTER);
         addView(surfaceView, surfaceParams);
@@ -51,7 +51,7 @@ public final class MinecraftGameplayInputLayer extends FrameLayout {
         });
     }
 
-    public SurfaceView getSurfaceView() {
+    public MinecraftSurfaceHost getSurfaceView() {
         return surfaceView;
     }
 
