@@ -1,5 +1,7 @@
 package com.droidlauncher.launcher;
 
+import android.animation.ObjectAnimator;
+import android.animation.ValueAnimator;
 import android.app.Activity;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -13,6 +15,7 @@ import android.graphics.drawable.LayerDrawable;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -21,12 +24,13 @@ import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 
-/** Loads a cached Minecraft landscape image and a lightweight animated particle layer. */
+/** Loads a cached Minecraft landscape image, particles, and lightweight launcher motion. */
 public final class LauncherBackgroundController {
     private static final String IMAGE_URL =
             "https://commons.wikimedia.org/wiki/Special:Redirect/file/Minecraft_-_Taiga.jpg";
     private static final String CACHE_FILE = "launcher-background.jpg";
     private static final String PARTICLE_TAG = "droid-launcher-particles";
+    private static final String PLAY_PULSE_TAG = "droid-launcher-play-pulse";
     private static final long MAX_CACHE_AGE_MS = 7L * 24L * 60L * 60L * 1000L;
 
     private LauncherBackgroundController() { }
@@ -44,6 +48,7 @@ public final class LauncherBackgroundController {
         if (bitmap != null) {
             apply(content, bitmap);
             installParticles(content);
+            installPlayPulse(content);
             if (System.currentTimeMillis() - cache.lastModified() < MAX_CACHE_AGE_MS) return;
         }
         new Thread(() -> {
@@ -52,6 +57,7 @@ public final class LauncherBackgroundController {
             activity.runOnUiThread(() -> {
                 apply(content, downloaded);
                 installParticles(content);
+                installPlayPulse(content);
             });
         }, "droid-background-loader").start();
     }
@@ -116,6 +122,42 @@ public final class LauncherBackgroundController {
         container.addView(particles, 0, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         particles.startAnimation();
+    }
+
+    private static void installPlayPulse(View root) {
+        Button play = findButton(root, "PLAY");
+        if (play == null || play.getTag(PLAY_PULSE_TAG.hashCode()) != null) return;
+
+        ObjectAnimator pulse = ObjectAnimator.ofFloat(play, View.SCALE_X, 1.0f, 1.025f);
+        pulse.setRepeatMode(ValueAnimator.REVERSE);
+        pulse.setRepeatCount(ValueAnimator.INFINITE);
+        pulse.setDuration(1300L);
+        pulse.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        pulse.addUpdateListener(animation -> {
+            if (!play.isEnabled() || play.isPressed()) {
+                play.setScaleX(1.0f);
+                play.setScaleY(1.0f);
+            } else {
+                play.setScaleY(play.getScaleX());
+            }
+        });
+        play.setTag(PLAY_PULSE_TAG.hashCode(), pulse);
+        pulse.start();
+    }
+
+    private static Button findButton(View root, String label) {
+        if (root instanceof Button) {
+            CharSequence text = ((Button) root).getText();
+            if (text != null && label.equalsIgnoreCase(text.toString().trim())) return (Button) root;
+        }
+        if (root instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) root;
+            for (int i = 0; i < group.getChildCount(); i++) {
+                Button found = findButton(group.getChildAt(i), label);
+                if (found != null) return found;
+            }
+        }
+        return null;
     }
 
     /** Small, low-cost floating particles for visual depth; no bitmap generation or GL effects. */
