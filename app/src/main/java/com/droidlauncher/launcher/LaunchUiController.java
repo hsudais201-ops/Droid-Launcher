@@ -35,6 +35,7 @@ public final class LaunchUiController implements LaunchObserver {
         this.detailView = detailView;
         this.launchManager = launchManager;
         this.processMonitor = processMonitor;
+        LauncherBackgroundController.install((android.app.Activity) statusView.getContext());
     }
 
     public void launch(JavaRuntime runtime,
